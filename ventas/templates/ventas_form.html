@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+  <h2>Registro de Venta</h2>
+  <form method="post">
+    {% csrf_token %}
+    {{ detalle_articulo_formset.management_form }}
+    {{ detalle_avance_formset.management_form }}
+    <div class="form-group">
+      <label for="cosecheroSelect">Cosechero</label>
+      <select class="form-control" id="cosecheroSelect" name="cosechero">
+        {% for cosechero in cosecheros %}
+        <option value="{{ cosechero.id }}">{{ cosechero.nombre }} {{ cosechero.apellido }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="id_cosecha">Cosecha</label>
+      {{ venta_form.cosecha }}
+    </div>
+
+    <div class="form-group">
+      <label for="id_fecha_venta">Fecha de Venta</label>
+      {{ venta_form.fecha_venta }}
+  </div>
+  
+    <!-- Tabla de artículos agregados al carrito -->
+    
+    <div class="form-group">
+      <label for="articulosTable">Buscar Artículos</label>
+      <table id="articulosTable" class="table table-striped table-bordered">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Precio</th>
+            <th>Inventario</th>
+            <th>Cantidad</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for articulo in articulos %}
+          <tr>
+            <td>{{ articulo.descripcion }}</td>
+            <td>{{ articulo.precio_venta }}</td>
+            <td>{{articulo.inventario}}</td>
+            <td>
+              <input type="number" name="cantidad" value="1" min="0" max="99999" class="form-control cantidad-input" step="0.01" data-articulo-id="{{ articulo.id }}">
+            </td>
+            <td>
+              <button type="button" class="btn btn-primary agregar-articulo" data-articulo-id="{{ articulo.id }}">Agregar</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-group">
+      <label for="articulosAgregados">Artículos Agregados</label>
+      <table id="articulosAgregados" class="table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Precio</th>
+            <th>Cantidad</th>
+            <th>Total</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Los artículos agregados se insertarán aquí dinámicamente -->
+        </tbody>
+      </table>
+    </div>
+    
+    <div class="form-group">
+      <label for="detalleAvances">Detalle de Avances</label>
+      <table id="detalleAvances" class="table">
+          <thead>
+              <tr>
+                  <th>Descripción</th>
+                  <th>Tipo</th>
+                  <th>Número</th>
+                  <th>Total</th>
+                  <th>Acción</th>
+              </tr>
+          </thead>
+          <tbody>
+              <!-- Los avances agregados se insertarán aquí dinámicamente -->
+          </tbody>
+      </table>
+      <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#avanceModal">
+        Crear Avance
+      </button>
+  </div>
+
+  <div class="form-group">
+    <label for="totalVenta">Total de la Venta</label>
+    <input type="text" name="total_venta" id="totalVenta" class="form-control" readonly>
+  </div>
+
+  
+
+    <button type="submit" class="btn btn-success">Registrar Venta</button>
+    <button type="submit" name="guardar_venta" class="btn btn-warning">Guardar Venta</button>
+
+    
+    
+    <!-- Modal para crear un Avance -->
+    <div class="modal fade" id="avanceModal" tabindex="-1" role="dialog" aria-labelledby="avanceModalLabel" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="avanceModalLabel">Nuevo Avance</h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <!-- Modal Body -->
+          <div class="modal-body">
+            <form id="formNuevoAvance">
+              <div class="form-group">
+                <label for="montoPagado">Monto Pagado</label>
+                <input type="number" class="form-control" id="montoPagado" step="0.01" placeholder="Escribe el monto pagado aquí">
+              </div>
+              <div class="form-group">
+                <label for="fechaAvance">Fecha del Avance</label>
+                <input type="date" class="form-control" id="fechaAvance" placeholder="Selecciona la fecha">
+              </div>
+              <div class="form-group">
+                <label for="descripcionAvance">Descripción del Avance</label>
+                <textarea class="form-control" id="descripcionAvance" placeholder="Descripción detallada del avance"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="tipoAvance">Tipo de Avance</label>
+                <select class="form-control" id="tipoAvance">
+                  <option value="cheque">Cheque</option>
+                  <option value="deposito">Depósito</option>
+                  <option value="efectivo">Efectivo</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="numeroAvance">Número de Documento</label>
+                <input type="text" class="form-control" id="numeroAvance" placeholder="Número de cheque, depósito o transacción">
+              </div>
+              <div class="form-group">
+                <label for="estadoAvance">Estado del Avance</label>
+                <select class="form-control" id="estadoAvance">
+                  <option value="realizado">Realizado</option>
+                  <option value="cambiado">Cambiado</option>
+                  <option value="nulo">Nulo</option>
+                </select>
+              </div>
+            </form>
+          </div>
+          
+
+          <!-- Modal Footer -->
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+            <button type="button" class="btn btn-primary" onclick="guardarAvance()">Guardar Avance</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </form>
+</main>
+
+<script src="https://code.jquery.com/jquery-3.5.1.js"></script>
+<!-- Incluir DataTables JS -->
+<script src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.min.js"></script>
+
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<!-- Incluir DataTables CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.10.21/css/jquery.dataTables.min.css">
+
+<script>
+
+var articulos = JSON.parse('{{ articulos_json|safe }}');
+var arti = '{{articulos}}'
+
+$(document).ready(function() {
+  // Inicializar la tabla con DataTables
+  var table = $('#articulosTable').DataTable();
+
+  // Evento para el botón de agregar artículo
+  $('#articulosTable tbody').on('click', '.agregar-articulo', function() {
+    var articuloId = $(this).data('articulo-id');
+    var cantidad = $(this).closest('tr').find('.cantidad-input').val();
+
+    // Aquí puedes llamar a la función que agregará el artículo al detalle de la venta
+    agregarDetalleArticulo(articuloId, cantidad);
+  });
+});
+
+$(document).ready(function() {
+    // Asignar evento click a los botones de eliminar dentro de la tabla de avances
+    $('#detalleAvances').on('click', '.eliminar-avance', function() {
+        // Eliminar la fila del avance
+        $(this).closest('tr').remove();
+
+        // Aquí puedes llamar a la función que actualiza el total si es necesario
+        actualizarTotalVenta();
+    });
+});
+
+
+// Función para agregar el detalle del artículo
+function agregarDetalleArticulo(articuloId, cantidad) {
+    var totalForms = document.getElementById('id_detalle_articulos-TOTAL_FORMS');
+    var currentFormCount = parseInt(totalForms.value);
+
+    var articulo = articulos.find(art => art.id === articuloId);
+    console.log(articulos)
+    console.log(articuloId)
+    console.log(articulo)
+    var totalArticulo = (articulo.precio_venta * cantidad).toFixed(2);
+
+    // Agregar fila con campos de formulario al carrito
+    $('#articulosAgregados tbody').append(`
+        <tr>
+            <td>${articulo.descripcion}</td>
+            <td>${articulo.precio_venta}</td>
+            <td>${cantidad}</td>
+            <td>${totalArticulo}</td>
+            <td>
+                <input type="hidden" name="detalle_articulos-${currentFormCount}-articulo" value="${articuloId}">
+                <input type="hidden" name="detalle_articulos-${currentFormCount}-cantidad" value="${cantidad}">
+                <input type="hidden" name="detalle_articulos-${currentFormCount}-precio_venta_final" value="${articulo.precio_venta}">
+                <button type="button" class="btn btn-danger eliminar-articulo" data-articulo-id="${articuloId}">Eliminar</button>
+            </td>
+        </tr>
+    `);
+
+    // Incrementar el contador de TOTAL_FORMS
+    totalForms.value = currentFormCount + 1;
+
+    // Actualizar total de la venta
+    actualizarTotalVenta();
+}
+
+
+
+function actualizarTotalVenta() {
+    var totalArticulos = 0;
+    var totalAvances = 0;
+
+    // Sumar los totales de los artículos agregados
+    $('#articulosAgregados tbody tr').each(function() {
+        totalArticulos += parseFloat($(this).find('td').eq(3).text());
+    });
+
+    // Sumar los montos de los avances
+    $('#detalleAvances tbody tr').each(function() {
+        totalAvances += parseFloat($(this).find('td').eq(3).text());
+    });
+
+    // Calcular el total general (puedes ajustar la lógica dependiendo de cómo se relacionan los avances con los artículos)
+    var totalVenta = totalArticulos + totalAvances;
+
+    $('#totalVenta').val(totalVenta.toFixed(2));
+}
+
+
+// Evento para eliminar artículo del carrito
+$('#articulosAgregados tbody').on('click', '.eliminar-articulo', function() {
+  $(this).closest('tr').remove();
+  actualizarTotalVenta();
+});
+
+function guardarAvance() {
+  var avance = {
+    monto_pagado: $('#montoPagado').val(),
+    fecha: $('#fechaAvance').val(),
+    descripcion: $('#descripcionAvance').val(),
+    tipo_avance: $('#tipoAvance').val(),
+    numero: $('#numeroAvance').val(),
+    estado: $('#estadoAvance').val()
+  };
+
+  // Aquí agregarías la lógica para enviar estos datos al backend
+  // y luego actualizar la interfaz de usuario según sea necesario.
+
+  // Por ejemplo, podrías llamar a una función que actualice el detalle de avances
+  agregarDetalleAvance(avance);
+
+  // Cerrar modal
+ 
+  $('#avanceModal').modal('hide');
+  $('.modal-backdrop').remove();
+
+}
+
+function agregarDetalleAvance(avance) {
+    var totalFormsAvances = document.getElementById('id_detalle_avances-TOTAL_FORMS');
+    var currentFormCountAvances = parseInt(totalFormsAvances.value);
+
+    // Crear una fila de tabla con los datos del avance y campos de formulario ocultos
+    var filaAvance = `
+        <tr>
+            <td>${avance.descripcion}</td>
+            <td>${avance.tipo_avance}</td>
+            <td>${avance.numero}</td>
+            <td>${avance.monto_pagado}</td>
+            <td>
+                <input type="hidden" name="detalle_avances-${currentFormCountAvances}-descripcion" value="${avance.descripcion}">
+                <input type="hidden" name="detalle_avances-${currentFormCountAvances}-tipo_avance" value="${avance.tipo_avance}">
+                <input type="hidden" name="detalle_avances-${currentFormCountAvances}-numero" value="${avance.numero}">
+                <input type="hidden" name="detalle_avances-${currentFormCountAvances}-monto" value="${avance.monto_pagado}">
+                <input type="hidden" name="detalle_avances-${currentFormCountAvances}-estado" value="${avance.estado}">
+                <input type="hidden" name="detalle_avances-${currentFormCountAvances}-fecha" value="${avance.fecha}">
+                <button type="button" class="btn btn-danger eliminar-avance" data-avance-id="${avance.numero}">Eliminar</button>
+            </td>
+        </tr>
+    `;
+
+    // Agregar la fila al cuerpo de la tabla de avances
+    $('#detalleAvances tbody').append(filaAvance);
+   
+
+    totalFormsAvances.value = currentFormCountAvances + 1;
+
+    // Actualizar total de la venta (si es necesario)
+    actualizarTotalVenta();
+}
+
+</script>
+
+{% endblock %}

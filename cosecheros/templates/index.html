@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Listado de Cosecheros</h2>
+    <form id="cosechaForm">
+        <div class="form-group">
+            <label for="cosechaSelect">Seleccione la Cosecha:</label>
+            <select name="cosecha_id" id="cosechaSelect" class="form-control">
+                {% for cosecha in cosechas %}
+                    <option value="{{ cosecha.id }}" {% if cosecha.id == cosecha_default.id %}selected{% endif %}>
+                        {{ cosecha }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    
+    <table class="table table-bordered mt-3">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Apellido</th>
+                <th>Teléfono</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cosechero in cosecheros %}
+            <tr>
+                <td>{{ cosechero.nombre }}</td>
+                <td>{{ cosechero.apellido }}</td>
+                <td>{{ cosechero.telefono }}</td>
+                <td>
+                    <a href="#" class="btn btn-primary" data-cosechero-id="{{ cosechero.id }}">Descargar Reporte</a>
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#entregaModal{{ cosechero.id }}">Agregar Entrega</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+
+
+{% for cosechero in cosecheros %}
+<!-- Modal -->
+<div class="modal fade" id="entregaModal{{ cosechero.id }}" tabindex="-1" aria-labelledby="entregaModalLabel{{ cosechero.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="entregaModalLabel{{ cosechero.id }}">Agregar Entrega de Tabaco</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'agregar_entrega_tabaco' cosechero.id %}">
+                    {% csrf_token %}
+
+                    <div class="form-group">
+                        <label for="id_cosecha">Cosecha</label>
+                        {{ form.cosecha }}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="id_variedad">Variedad de Tabaco</label>
+                        {{ form.variedad }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_fecha">Fecha Entrega</label>
+                        {{ form.fecha_entrega }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_centro_largo">Centro Largo</label>
+                        {{ form.centro_largo }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_centro_corto">Centro Corto</label>
+                        {{ form.centro_corto }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_uno_medio">Uno y Medio</label>
+                        {{ form.uno_medio }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_libre_pie">Libre Pie</label>
+                        {{ form.libre_pie }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_picadura">Picadura</label>
+                        {{ form.picadura }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_rezago">Rezago</label>
+                        {{ form.rezago }}
+                    </div>
+                    <div class="form-group">
+                        <label for="id_criollo">Criollo</label>
+                        {{ form.criollo }}
+                    </div>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const cosechaSelect = document.getElementById('cosechaSelect');
+        const reportLinks = document.querySelectorAll('.btn-primary');
+
+        function updateLinks() {
+            const selectedCosechaId = cosechaSelect.value;
+            reportLinks.forEach(link => {
+                const cosecheroId = link.getAttribute('data-cosechero-id');
+                link.href = `/cosecheros/reporte-cosechero/${cosecheroId}/${selectedCosechaId}/`;
+            });
+        }
+
+        // Update the links on page load
+        updateLinks();
+
+        // Update links when the cosechaSelect changes
+        cosechaSelect.addEventListener('change', updateLinks);
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,140 @@
+<!-- base.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Tu Aplicación</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    {% block extra_css %}{% endblock %}
+    <!-- Estilos personalizados para tema oscuro y efectos -->
+    <style>
+        body, .bg-light, .table {
+            background-color: #001 !important;
+            color: #000dfffe;
+        }
+        .nav-link {
+            border-radius: 30px;
+            margin: 5px 0;
+        }
+        .nav-link:hover {
+            background-color: #495057;
+        }
+        footer {
+            background-color: #212529;
+            color: #ffffff;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            text-align: center;
+            padding: 10px 0;
+        }
+        .sticky-bottom {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+        }
+        .username-display {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+        }
+    </style>
+    <!-- Optional Bootstrap JS and jQuery -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.min.js"></script>
+     {% block extra_js %}{% endblock %}
+</head>
+<body>
+    <header>
+        <!-- Cabecera con información de la empresa y nombre de usuario -->
+        <div class="username-display">
+            Bienvenido, {{ user.get_full_name }} <!-- Asegúrate de que 'user' está en el contexto de la vista -->
+        </div>
+    </header>
+
+    <div class="container-fluid">
+        <div class="row">
+            <nav class="col-md-2 d-none d-md-block bg-light sidebar">
+                <div class="d-flex flex-column sidebar-sticky" style="height: 94.5vh; ">
+                    <ul class="nav flex-column">
+                        <!-- Botones del menú lateral -->
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'dashboard' %}">
+                                Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'ventas' %}">
+                                Ventas
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'tickets' %}">
+                                Tickets
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'compras' %}">
+                                Inventario
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'cosecheros' %}">
+                                Cosecheros
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'avances' %}">
+                                Avances
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{% url 'dashboard' %}">
+                                Proveedores
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="/admin/">
+                                Administracion
+                            </a>
+                        </li>
+                    </ul>
+                    <!-- Botón de cierre de sesión al fondo -->
+                    <ul class="nav flex-column mt-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'logout' %}">
+                                Cerrar sesión
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+                {% block content %}
+                <!-- El contenido de cada página individual irá aquí -->
+                {% endblock %}
+            </main>
+        </div>
+    </div>
+    <!--
+    <footer>
+         Pie de página con la hora actual 
+        <div id="time"></div>  'now' debe ser pasado al contexto de la plantilla 
+    </footer>
+
+    Código JavaScript para actualizar la hora en el footer 
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          function updateTime() {
+            var now = new Date();
+            document.getElementById('time').innerHTML = now.toLocaleTimeString();
+          }
+          setInterval(updateTime, 1000);
+        });
+      </script>
+      -->
+</body>
+</html>

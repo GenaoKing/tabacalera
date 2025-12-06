@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+  <h2>Subir Archivo</h2>
+
+  <form method="post" action="{% url 'avances' %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="form-group">
+      {{ form.files.label_tag }}
+      {{ form.files }}
+      {{ form.files.errors }}
+    </div>
+
+    <button type="submit" name="submit_cheques" class="btn btn-primary">Subir Cheques</button>
+    <button type="submit" name="submit_depositos" class="btn btn-secondary">Subir Depósitos</button>
+    <button type="submit" name="submit_efectivos" class="btn btn-success">Subir Efectivos</button>
+  </form>
+
+  {% if messages %}
+    <div class="mt-3">
+      {% for message in messages %}
+        <div class="alert alert-info">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+# ---- Entornos virtuales / Conda / venv ----
+env/
+venv/
+.venv/
+*.egg-info/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ---- Django ----
+*.log
+staticfiles/
+media/
+local_settings.py
+
+# Si guardas la DB de dev en SQLite
+db.sqlite3
+
+# ---- Archivos de configuración local/secretos ----
+.env
+*.env
+
+# ---- VSCode ----
+.vscode/
+
+# ---- Sistema ----
+.DS_Store
+Thumbs.db
