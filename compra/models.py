@@ -14,6 +14,9 @@ class Compra(models.Model):
     class Meta:
         unique_together = ('proveedor', 'factura')
 
+    def __str__(self):
+        return f"{self.proveedor} - Factura {self.factura}"
+
     def delete(self, *args, **kwargs):
         self.is_active = False
         self.save()
