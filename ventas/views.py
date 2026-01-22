@@ -123,7 +123,6 @@ def calcular_inventario_y_precio_venta(articulos):
             precio_venta_lote_mas_antiguo = lote_mas_antiguo.precio_venta_sugerido
         else:
             precio_venta_lote_mas_antiguo = 0
-
         articulo.inventario = total_inventario
         articulo.precio_venta = float(precio_venta_lote_mas_antiguo)
 

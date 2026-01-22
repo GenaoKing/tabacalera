@@ -31,4 +31,4 @@ class Articulo(models.Model):
         self.save()
     
     def __str__(self):
-        return self.descripcion
+        return self.descripcion+" - "+self.presentacion + " - " + self.proveedor.nombre
