@@ -1,3 +1,4 @@
+# avance/models.py
 from django.db import models
 from cosecheros.models import Cosechero
 

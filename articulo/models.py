@@ -1,3 +1,4 @@
+# articulo/models.py
 from django.db import models
 
 from proveedor.models import Proveedor

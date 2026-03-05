@@ -1,3 +1,4 @@
+#ventas/models.py
 from django.db import models
 from django.forms import ValidationError
 from cosecheros.models import Cosechero, Cosecha

@@ -1,4 +1,4 @@
-# views.py
+# compra/views.py
 
 import json
 from django.forms import inlineformset_factory

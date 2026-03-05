@@ -1,3 +1,4 @@
+# cosecheros/views.py
 import decimal
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render, get_object_or_404

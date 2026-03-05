@@ -1,4 +1,4 @@
-# views.py
+# avance/views.py
 from datetime import date, datetime
 from pathlib import Path
 import re
@@ -193,6 +193,8 @@ def handle_uploaded_file(f,tipo):
         # 4) Cachés locales para eficiencia y CONSISTENCIA
         cosecheros_cache: dict[int, Cosechero] = {}
         ventas_cache: dict[tuple[int, date], Venta] = {}
+        depositos_creados = []
+        errores = []
 
         for index, row in df.iterrows():
             cuenta = limpiar_cuenta(row.get('No. de cuenta'))
@@ -237,7 +239,7 @@ def handle_uploaded_file(f,tipo):
                                 fecha_venta=fecha_sabado,
                                 impreso=False,
                                 total=monto,
-                                cosecha_id=2
+                                cosecha_id=10002
                             )
                         else:
                             # Seguridad: la venta debe pertenecer al mismo cosechero
@@ -272,10 +274,51 @@ def handle_uploaded_file(f,tipo):
                         avance=avance,
                         monto=monto
                     )
+                    depositos_creados.append({
+                        'fila': index,
+                        'cosechero_id': c_obj.id,
+                        'cosechero': str(c_obj),
+                        'fecha': fecha_avance,
+                        'monto': monto,
+                        'venta_id': venta.id,
+                        'fecha_sabado': fecha_sabado
+                    })
+
 
             except Exception as e:
+                errores.append({
+                    'fila': index,
+                    'cuenta': cuenta,
+                    'error': str(e),
+                })
                 print(f"Error fila {index} (cuenta {cuenta}): {e}")
                 continue
+        
+
+        print("\n===== RESUMEN DE DEPÓSITOS CREADOS =====")
+        for d in depositos_creados:
+            print(
+                f"Fila {d['fila']} | "
+                f"Cosechero={d['cosechero']} | "
+                f"Fecha={d['fecha']} | "
+                f"Monto={d['monto']} | "
+                f"VentaID={d['venta_id']} | "
+                f"Sábado={d['fecha_sabado']} | "
+                
+                
+            )
+
+        print(f"\nTOTAL DEPÓSITOS CREADOS: {len(depositos_creados)}")
+        total_monto = sum(d['monto'] for d in depositos_creados)
+        print(f"\nMONTO TOTAL DEPÓSITOS CREADOS: {total_monto}")
+
+        if errores:
+            print("\n===== ERRORES =====")
+            for er in errores:
+                print(f"Fila {er['fila']} | Cuenta={er['cuenta']} | Error={er['error']}")
+            print(f"\nTOTAL ERRORES: {len(errores)}")
+
+        
         # ...
     elif 'cheques' == tipo:
         # 1) Leer CSV reusando nuestra función robusta de encodings
@@ -345,7 +388,7 @@ def handle_uploaded_file(f,tipo):
                                 impreso=False,
                                 total=monto,
                                 # si manejas cosecha, descomenta:
-                                cosecha_id=2,
+                                cosecha_id=10002,
                             )
                             creados_ventas += 1
                         else:
@@ -496,7 +539,7 @@ def handle_uploaded_file(f,tipo):
                                 impreso=False,
                                 total=monto,
                                 # ajusta si manejas múltiples cosechas:
-                                cosecha_id=2,
+                                cosecha_id=10002,
                             )
                             creados_ventas += 1
                         else:

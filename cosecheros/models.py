@@ -1,3 +1,4 @@
+# cosecheros/models.py
 from django.db import models
 from django.core.exceptions import ValidationError
 

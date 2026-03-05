@@ -1,3 +1,4 @@
+# compra/models.py
 from django.db import models
 from articulo.models import Articulo
 from proveedor.models import Proveedor

@@ -1,3 +1,4 @@
+# proveedor/models.py
 from django.db import models
 
 class Proveedor(models.Model):

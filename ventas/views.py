@@ -1,3 +1,4 @@
+#ventas/views.py
 from decimal import Decimal
 import decimal
 from django.http import HttpResponse, JsonResponse

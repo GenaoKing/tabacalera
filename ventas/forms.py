@@ -1,3 +1,4 @@
+#ventas/forms.py
 from django import forms
 from .models import Venta, DetalleArticulo, DetalleAvance
 from articulo.models import Articulo
