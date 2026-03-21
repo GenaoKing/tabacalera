@@ -1,30 +1,662 @@
 {% extends 'base.html' %}
 
+{% block page_title %}Importar Avances{% endblock %}
+
 {% block content %}
-<div class="container">
-  <h2>Subir Archivo</h2>
+<div x-data="avanceImporter()" class="max-w-6xl mx-auto">
 
-  <form method="post" action="{% url 'avances' %}" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ form.non_field_errors }}
+  <!-- ══════════════════════════════════════════════
+       STEPPER - Indicador de progreso
+  ══════════════════════════════════════════════ -->
+  <div class="flex items-center gap-3 mb-8">
+    <template x-for="(step, i) in steps" :key="i">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200"
+             :class="currentStep === i
+               ? 'bg-blue-500/10 border border-blue-500/30'
+               : currentStep > i
+                 ? 'bg-emerald-500/10 border border-emerald-500/30'
+                 : 'bg-slate-800/50 border border-slate-700/50'">
+          <span class="flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold"
+                :class="currentStep === i
+                  ? 'bg-blue-500 text-white'
+                  : currentStep > i
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-slate-700 text-slate-400'">
+            <template x-if="currentStep > i">
+              <span>✓</span>
+            </template>
+            <template x-if="currentStep <= i">
+              <span x-text="i + 1"></span>
+            </template>
+          </span>
+          <span class="text-sm font-medium"
+                :class="currentStep === i ? 'text-blue-400' : currentStep > i ? 'text-emerald-400' : 'text-slate-500'"
+                x-text="step"></span>
+        </div>
+        <template x-if="i < steps.length - 1">
+          <div class="w-8 h-px" :class="currentStep > i ? 'bg-emerald-500/50' : 'bg-slate-700'"></div>
+        </template>
+      </div>
+    </template>
+  </div>
 
-    <div class="form-group">
-      {{ form.files.label_tag }}
-      {{ form.files }}
-      {{ form.files.errors }}
+  <!-- ══════════════════════════════════════════════
+       PASO 1: Subir archivo
+  ══════════════════════════════════════════════ -->
+  <div x-show="currentStep === 0" x-transition>
+    <div class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8">
+      <h2 class="text-lg font-semibold text-white mb-1">Subir archivo de avances</h2>
+      <p class="text-sm text-slate-400 mb-6">CSV o XLSX. El sistema detectará automáticamente el tipo de avance.</p>
+
+      <!-- Drop zone -->
+      <div class="border-2 border-dashed border-slate-600 rounded-xl p-12 text-center transition-colors duration-200
+                  hover:border-blue-500/50 hover:bg-blue-500/5"
+           @dragover.prevent="isDragging = true"
+           @dragleave.prevent="isDragging = false"
+           @drop.prevent="handleFileDrop($event)"
+           :class="isDragging ? 'border-blue-500 bg-blue-500/10' : ''">
+
+        <div class="text-slate-400 mb-4">
+          <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p class="text-sm">Arrastra tu archivo aquí o</p>
+        </div>
+
+        <label class="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm
+                      font-medium rounded-lg cursor-pointer transition-colors">
+          <span>Seleccionar archivo</span>
+          <input type="file" accept=".csv,.xlsx,.xls" class="hidden" @change="handleFileSelect($event)">
+        </label>
+
+        <p class="text-xs text-slate-500 mt-3">Formatos: .csv, .xlsx, .xls</p>
+      </div>
+
+      <!-- Archivo seleccionado -->
+      <div x-show="selectedFile" x-transition class="mt-4 flex items-center justify-between bg-slate-900/50 rounded-lg px-4 py-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <span class="text-blue-400 text-sm font-mono" x-text="selectedFile?.name?.split('.').pop()?.toUpperCase()"></span>
+          </div>
+          <div>
+            <p class="text-sm font-medium text-white" x-text="selectedFile?.name"></p>
+            <p class="text-xs text-slate-500" x-text="formatFileSize(selectedFile?.size)"></p>
+          </div>
+        </div>
+        <button @click="clearFile()" class="text-slate-500 hover:text-red-400 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Botón procesar -->
+      <div class="mt-6 flex justify-end">
+        <button @click="parseFile()"
+                :disabled="!selectedFile || isLoading"
+                class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500
+                       text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2">
+          <svg x-show="isLoading" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span x-text="isLoading ? 'Procesando...' : 'Analizar archivo'"></span>
+        </button>
+      </div>
+
+      <!-- Error -->
+      <div x-show="parseError" x-transition class="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
+        <p class="text-sm text-red-400" x-text="parseError"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PASO 2: Preview y validación
+  ══════════════════════════════════════════════ -->
+  <div x-show="currentStep === 1" x-transition>
+    <!-- Header con info del archivo -->
+    <div class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 mb-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-3 mb-1">
+            <h2 class="text-lg font-semibold text-white" x-text="previewData?.filename"></h2>
+            <span class="px-2.5 py-0.5 rounded-md text-xs font-medium"
+                  :class="{
+                    'bg-blue-500/10 text-blue-400': previewData?.formato === 'banco_depositos',
+                    'bg-purple-500/10 text-purple-400': previewData?.formato === 'cheques',
+                    'bg-emerald-500/10 text-emerald-400': previewData?.formato === 'efectivos',
+                    'bg-amber-500/10 text-amber-400': previewData?.formato === 'unificado',
+                  }"
+                  x-text="formatoLabels[previewData?.formato] || previewData?.formato">
+            </span>
+          </div>
+          <p class="text-sm text-slate-400">
+            <span x-text="previewData?.total_rows"></span> registros encontrados
+            <span x-show="previewData?.fecha_filename" class="ml-2">
+              · Fecha del archivo: <span class="text-slate-300" x-text="previewData?.fecha_filename"></span>
+            </span>
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span x-text="previewData?.validos"></span> válidos
+          </span>
+          <span x-show="previewData?.warnings > 0"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 text-xs font-medium">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span x-text="previewData?.warnings"></span> alertas
+          </span>
+          <span x-show="previewData?.errores > 0"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium">
+            <span class="w-2 h-2 rounded-full bg-red-400"></span>
+            <span x-text="previewData?.errores"></span> errores
+          </span>
+        </div>
+      </div>
     </div>
 
-    <button type="submit" name="submit_cheques" class="btn btn-primary">Subir Cheques</button>
-    <button type="submit" name="submit_depositos" class="btn btn-secondary">Subir Depósitos</button>
-    <button type="submit" name="submit_efectivos" class="btn btn-success">Subir Efectivos</button>
-  </form>
-
-  {% if messages %}
-    <div class="mt-3">
-      {% for message in messages %}
-        <div class="alert alert-info">{{ message }}</div>
-      {% endfor %}
+    <!-- Controles de selección y filtro -->
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <button @click="selectAll()" class="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+          Seleccionar todos
+        </button>
+        <button @click="selectValid()" class="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+          Solo válidos
+        </button>
+        <button @click="deselectAll()" class="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
+          Deseleccionar
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-slate-400">Filtrar:</label>
+        <select x-model="statusFilter" class="text-xs bg-slate-800 border border-slate-700 rounded-md px-2 py-1.5 text-slate-300">
+          <option value="all">Todos</option>
+          <option value="valid">Válidos</option>
+          <option value="warning">Con alertas</option>
+          <option value="error">Con errores</option>
+        </select>
+      </div>
     </div>
-  {% endif %}
+
+    <!-- Fecha global (si el archivo no traía fechas individuales) -->
+    <div x-show="needsGlobalDate()" class="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3 mb-3">
+      <div class="flex items-center gap-3">
+        <span class="text-amber-400 text-sm">Algunas filas no tienen fecha. Fecha global:</span>
+        <input type="date" x-model="globalDate"
+               @change="applyGlobalDate()"
+               class="text-sm bg-slate-800 border border-slate-600 rounded-md px-3 py-1.5 text-white">
+      </div>
+    </div>
+
+    <!-- Tabla de preview -->
+    <div class="bg-slate-800/50 border border-slate-700/50 rounded-xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-700">
+              <th class="px-3 py-3 text-left">
+                <input type="checkbox"
+                       :checked="allVisibleSelected()"
+                       @change="toggleAllVisible($event.target.checked)"
+                       class="rounded border-slate-600">
+              </th>
+              <th class="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Estado</th>
+              <th class="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Cosechero</th>
+              <th class="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Tipo</th>
+              <th class="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Número</th>
+              <th class="px-3 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Monto</th>
+              <th class="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Fecha</th>
+              <th class="px-3 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Descripción</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(row, i) in filteredRows()" :key="row.index">
+              <tr class="border-b border-slate-700/50 transition-colors"
+                  :class="{
+                    'hover:bg-slate-700/30': row.status !== 'error',
+                    'bg-red-500/5': row.status === 'error',
+                    'bg-amber-500/5': row.status === 'warning',
+                  }">
+                <!-- Checkbox -->
+                <td class="px-3 py-2.5">
+                  <input type="checkbox"
+                         x-model="row.selected"
+                         :disabled="row.status === 'error' && !row.cosechero_id"
+                         class="rounded border-slate-600">
+                </td>
+
+                <!-- Status -->
+                <td class="px-3 py-2.5">
+                  <span class="inline-block w-2.5 h-2.5 rounded-full"
+                        :class="{
+                          'bg-emerald-400': row.status === 'valid',
+                          'bg-amber-400': row.status === 'warning',
+                          'bg-red-400': row.status === 'error',
+                        }"
+                        :title="row.status_msg"></span>
+                </td>
+
+                <!-- Cosechero -->
+                <td class="px-3 py-2.5">
+                  <template x-if="row.status === 'warning' && !row.cosechero_id">
+                    <div>
+                      <p class="text-amber-400 text-xs font-medium mb-1" x-text="row.cosechero_nombre || 'No encontrado'"></p>
+                      <p x-show="row.cuenta" class="text-slate-500 text-xs mb-1.5">cta: <span x-text="row.cuenta"></span></p>
+                      <select @change="assignCosechero(row, $event.target.value)"
+                              class="text-xs bg-slate-900 border border-amber-500/30 rounded-md px-2 py-1 text-slate-300 w-full max-w-[200px]">
+                        <option value="">-- Seleccionar --</option>
+                        <template x-for="c in previewData.cosecheros" :key="c.id">
+                          <option :value="c.id" x-text="c.nombre"></option>
+                        </template>
+                      </select>
+                    </div>
+                  </template>
+                  <template x-if="!(row.status === 'warning' && !row.cosechero_id)">
+                    <div>
+                      <p class="text-slate-200 text-sm" x-text="row.cosechero_nombre"></p>
+                      <p x-show="row.cuenta" class="text-slate-500 text-xs">cta: <span x-text="row.cuenta"></span></p>
+                    </div>
+                  </template>
+                </td>
+
+                <!-- Tipo -->
+                <td class="px-3 py-2.5">
+                  <span class="px-2 py-0.5 rounded text-xs font-medium"
+                        :class="{
+                          'bg-blue-500/10 text-blue-400': row.tipo_avance === 'deposito',
+                          'bg-purple-500/10 text-purple-400': row.tipo_avance === 'cheque',
+                          'bg-emerald-500/10 text-emerald-400': row.tipo_avance === 'efectivo',
+                        }"
+                        x-text="row.tipo_avance"></span>
+                </td>
+
+                <!-- Número -->
+                <td class="px-3 py-2.5 text-slate-300 font-mono text-xs" x-text="row.numero || '-'"></td>
+
+                <!-- Monto -->
+                <td class="px-3 py-2.5 text-right font-medium"
+                    :class="row.monto ? 'text-white' : 'text-red-400'"
+                    x-text="row.monto_display"></td>
+
+                <!-- Fecha -->
+                <td class="px-3 py-2.5">
+                  <template x-if="row.fecha">
+                    <span class="text-slate-300 text-xs" x-text="row.fecha_display"></span>
+                  </template>
+                  <template x-if="!row.fecha">
+                    <input type="date" class="text-xs bg-slate-900 border border-red-500/30 rounded px-2 py-1 text-slate-300"
+                           @change="row.fecha = $event.target.value; row.fecha_display = formatDate($event.target.value); revalidateRow(row)">
+                  </template>
+                </td>
+
+                <!-- Descripción -->
+                <td class="px-3 py-2.5 text-slate-400 text-xs max-w-[200px] truncate" x-text="row.descripcion"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer: resumen y acciones -->
+    <div class="mt-4 bg-slate-800/50 border border-slate-700/50 rounded-xl p-5">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-slate-400">
+            Monto total seleccionado:
+            <span class="text-white font-semibold text-base ml-1" x-text="'RD$ ' + totalSeleccionado()"></span>
+          </p>
+          <p class="text-xs text-slate-500 mt-1">
+            <span x-text="countSelected()"></span> de <span x-text="previewData?.total_rows"></span> registros seleccionados
+            · Cosecha: <span class="text-slate-400" x-text="'{{ COSECHA_LABEL }}'">2025-2026</span>
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button @click="backToUpload()"
+                  class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
+            Volver
+          </button>
+          <button @click="confirmImport()"
+                  :disabled="countSelected() === 0 || isImporting"
+                  class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500
+                         text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2">
+            <svg x-show="isImporting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <span x-text="isImporting ? 'Importando...' : 'Importar ' + countSelected() + ' avances'"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       PASO 3: Resultado
+  ══════════════════════════════════════════════ -->
+  <div x-show="currentStep === 2" x-transition>
+    <div class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8 text-center">
+      <!-- Éxito -->
+      <template x-if="importResult && importResult.success">
+        <div>
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/10 flex items-center justify-center">
+            <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <h2 class="text-xl font-semibold text-white mb-2">Importación completada</h2>
+          <div class="flex items-center justify-center gap-6 mt-6 mb-8">
+            <div class="text-center">
+              <p class="text-2xl font-bold text-emerald-400" x-text="importResult.stats?.avances_creados"></p>
+              <p class="text-xs text-slate-400 mt-1">Avances creados</p>
+            </div>
+            <div class="w-px h-10 bg-slate-700"></div>
+            <div class="text-center">
+              <p class="text-2xl font-bold text-blue-400" x-text="importResult.stats?.ventas_creadas"></p>
+              <p class="text-xs text-slate-400 mt-1">Ventas nuevas</p>
+            </div>
+            <div class="w-px h-10 bg-slate-700"></div>
+            <div class="text-center">
+              <p class="text-2xl font-bold text-amber-400" x-text="importResult.stats?.ventas_actualizadas"></p>
+              <p class="text-xs text-slate-400 mt-1">Ventas actualizadas</p>
+            </div>
+          </div>
+
+          <!-- Errores parciales -->
+          <div x-show="importResult.stats?.errores?.length > 0" class="mt-4 text-left max-w-md mx-auto">
+            <p class="text-sm text-red-400 mb-2">Errores durante la importación:</p>
+            <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-3 max-h-40 overflow-y-auto">
+              <template x-for="err in importResult.stats?.errores" :key="err">
+                <p class="text-xs text-red-300 mb-1" x-text="err"></p>
+              </template>
+            </div>
+          </div>
+
+          <button @click="resetAll()"
+                  class="mt-8 px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors">
+            Importar otro archivo
+          </button>
+        </div>
+      </template>
+
+      <!-- Error general -->
+      <template x-if="importResult && !importResult.success">
+        <div>
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
+            <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </div>
+          <h2 class="text-xl font-semibold text-white mb-2">Error en la importación</h2>
+          <p class="text-sm text-red-400" x-text="importResult.error"></p>
+          <button @click="currentStep = 1"
+                  class="mt-6 px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors">
+            Volver al preview
+          </button>
+        </div>
+      </template>
+    </div>
+  </div>
+
 </div>
+
+<script>
+function avanceImporter() {
+  return {
+    // Estado general
+    steps: ['Subir archivo', 'Revisar y validar', 'Resultado'],
+    currentStep: 0,
+    isLoading: false,
+    isImporting: false,
+
+    // Paso 1
+    selectedFile: null,
+    isDragging: false,
+    parseError: null,
+
+    // Paso 2
+    previewData: null,
+    statusFilter: 'all',
+    globalDate: '',
+
+    // Paso 3
+    importResult: null,
+
+    // Labels
+    formatoLabels: {
+      'banco_depositos': 'Depósitos (banco)',
+      'cheques': 'Cheques',
+      'efectivos': 'Efectivos',
+      'unificado': 'Formato unificado',
+    },
+
+    // ─── Paso 1: Upload ───
+    handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        this.selectedFile = file;
+        this.parseError = null;
+      }
+    },
+
+    handleFileDrop(event) {
+      this.isDragging = false;
+      const file = event.dataTransfer.files[0];
+      if (file) {
+        this.selectedFile = file;
+        this.parseError = null;
+      }
+    },
+
+    clearFile() {
+      this.selectedFile = null;
+      this.parseError = null;
+    },
+
+    formatFileSize(bytes) {
+      if (!bytes) return '';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    },
+
+    async parseFile() {
+      if (!this.selectedFile) return;
+      this.isLoading = true;
+      this.parseError = null;
+
+      const formData = new FormData();
+      formData.append('files', this.selectedFile);
+
+      try {
+        const response = await fetch("{% url 'avances:api_parse' %}", {
+          method: 'POST',
+          headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+          },
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          this.previewData = data.data;
+          this.currentStep = 1;
+
+          // Si hay fecha del filename, setear como global date
+          if (data.data.fecha_filename) {
+            this.globalDate = data.data.fecha_filename;
+          }
+        } else {
+          this.parseError = data.error;
+        }
+      } catch (err) {
+        this.parseError = 'Error de conexión al procesar el archivo.';
+        console.error(err);
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    // ─── Paso 2: Preview ───
+    filteredRows() {
+      if (!this.previewData?.rows) return [];
+      if (this.statusFilter === 'all') return this.previewData.rows;
+      return this.previewData.rows.filter(r => r.status === this.statusFilter);
+    },
+
+    selectAll() {
+      this.previewData.rows.forEach(r => {
+        if (r.status !== 'error' || r.cosechero_id) r.selected = true;
+      });
+    },
+
+    selectValid() {
+      this.previewData.rows.forEach(r => {
+        r.selected = r.status === 'valid';
+      });
+    },
+
+    deselectAll() {
+      this.previewData.rows.forEach(r => r.selected = false);
+    },
+
+    allVisibleSelected() {
+      const visible = this.filteredRows().filter(r => r.status !== 'error' || r.cosechero_id);
+      return visible.length > 0 && visible.every(r => r.selected);
+    },
+
+    toggleAllVisible(checked) {
+      this.filteredRows().forEach(r => {
+        if (r.status !== 'error' || r.cosechero_id) r.selected = checked;
+      });
+    },
+
+    assignCosechero(row, cosecheroId) {
+      if (!cosecheroId) {
+        row.cosechero_id = null;
+        row.status = 'warning';
+        row.status_msg = 'Cosechero no encontrado';
+        row.selected = false;
+        return;
+      }
+      const c = this.previewData.cosecheros.find(c => c.id == cosecheroId);
+      if (c) {
+        row.cosechero_id = c.id;
+        row.cosechero_nombre = c.nombre;
+        row.status = row.fecha && row.monto ? 'valid' : 'error';
+        row.status_msg = '';
+        row.selected = row.status === 'valid';
+      }
+    },
+
+    needsGlobalDate() {
+      if (!this.previewData?.rows) return false;
+      return this.previewData.rows.some(r => !r.fecha);
+    },
+
+    applyGlobalDate() {
+      if (!this.globalDate) return;
+      this.previewData.rows.forEach(r => {
+        if (!r.fecha) {
+          r.fecha = this.globalDate;
+          r.fecha_display = this.formatDate(this.globalDate);
+          this.revalidateRow(r);
+        }
+      });
+    },
+
+    formatDate(isoDate) {
+      if (!isoDate) return '';
+      const parts = isoDate.split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    },
+
+    revalidateRow(row) {
+      const errors = [];
+      if (!row.monto || parseFloat(row.monto) <= 0) errors.push('Monto inválido');
+      if (!row.fecha) errors.push('Fecha vacía');
+      if (!row.cosechero_id) errors.push('Cosechero no encontrado');
+
+      if (errors.length === 0) {
+        row.status = 'valid';
+        row.status_msg = '';
+        row.selected = true;
+      } else if (!row.cosechero_id && errors.length === 1) {
+        row.status = 'warning';
+        row.status_msg = 'Cosechero no encontrado';
+      } else {
+        row.status = 'error';
+        row.status_msg = errors.join('; ');
+      }
+    },
+
+    countSelected() {
+      if (!this.previewData?.rows) return 0;
+      return this.previewData.rows.filter(r => r.selected).length;
+    },
+
+    totalSeleccionado() {
+      if (!this.previewData?.rows) return '0.00';
+      const total = this.previewData.rows
+        .filter(r => r.selected && r.monto)
+        .reduce((sum, r) => sum + parseFloat(r.monto), 0);
+      return total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+
+    backToUpload() {
+      this.currentStep = 0;
+      this.previewData = null;
+    },
+
+    // ─── Paso 3: Import ───
+    async confirmImport() {
+      const selectedRows = this.previewData.rows.filter(r => r.selected);
+      if (selectedRows.length === 0) return;
+
+      this.isImporting = true;
+
+      try {
+        const response = await fetch("{% url 'avances:api_import' %}", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}',
+          },
+          body: JSON.stringify({ rows: selectedRows }),
+        });
+
+        const data = await response.json();
+        this.importResult = data;
+        this.currentStep = 2;
+
+      } catch (err) {
+        this.importResult = {
+          success: false,
+          error: 'Error de conexión al importar.',
+        };
+        this.currentStep = 2;
+        console.error(err);
+      } finally {
+        this.isImporting = false;
+      }
+    },
+
+    resetAll() {
+      this.currentStep = 0;
+      this.selectedFile = null;
+      this.previewData = null;
+      this.importResult = null;
+      this.parseError = null;
+      this.statusFilter = 'all';
+      this.globalDate = '';
+    },
+  };
+}
+</script>
 {% endblock %}
