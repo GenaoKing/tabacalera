@@ -7,15 +7,15 @@
 | Fase | Estado | Evidencia principal |
 |---|---|---|
 | Seguridad, Git y backup | Completada | rama `feature/venta-segura`, checkpoint `ec5e74b`, BAK verificado en `RUNBOOK_PRODUCCION.md` |
-| Venta decimal e idempotente | Completada | migración `ventas.0006`, `OperacionVenta`, bloqueo MSSQL y pruebas de replay/conflicto/FIFO |
-| Captura AJAX y borrador | Completada | `ventas_form_v2.html`, `sessionStorage` 24 h, búsqueda normalizada y resumen semanal |
+| Venta decimal e idempotente | Completada | `b067583`, migración `ventas.0006`, `OperacionVenta`, bloqueo MSSQL y pruebas de replay/conflicto/FIFO |
+| Captura AJAX y borrador | Completada | `9e5ffce`, `ventas_form_v2.html`, `sessionStorage` 24 h, búsqueda normalizada y resumen semanal |
 | Impresión desacoplada | Completada en código | POST separado y `503` sin rollback; falta prueba física final de la USB |
 | Tickets escalables | Completada | filtros GET, paginación de 50 y POST de impresión |
-| CRUD y altas rápidas | Completada | cosecheros, artículos y proveedores; soft-delete y validaciones |
-| Dashboard financiero | Completada | resumen por cosecha, grupos de saldo, PDF y CSV desde cálculo común |
-| Hardening | Completada en código | entorno, zona horaria, favicon, recursos visuales locales; pendiente smoke test manual con impresora |
+| CRUD y altas rápidas | Completada | `9e5ffce`, cosecheros, artículos y proveedores; soft-delete y validaciones |
+| Dashboard financiero | Completada | `7207a7c`, resumen por cosecha, grupos de saldo, PDF y CSV desde cálculo común |
+| Hardening | Completada en código | `fc2e197`, entorno, zona horaria, favicon, recursos locales; smoke autenticado correcto, pendiente impresora física |
 
-Commits de fase y resultados de validación se completan al cierre de esta rama. Los puntos que exigen hardware real no se consideran verificados hasta probar la impresora conectada.
+Validación final: `manage.py check` sin hallazgos, migraciones sin pendientes, Tailwind compilado, `collectstatic` correcto, 11 pruebas aprobadas y smoke autenticado `200` en todas las pantallas operativas. Los puntos que exigen hardware real no se consideran verificados hasta probar la impresora conectada.
 
 ## Por qué existe este documento
 
