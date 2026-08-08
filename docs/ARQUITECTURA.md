@@ -1,6 +1,6 @@
 # Arquitectura — Tabacalera
 
-> Última auditoría de código: 2026-08-08. Las rutas `archivo:línea` citadas aquí reflejan el estado del código en esa fecha — el proyecto está en migración activa, así que verifica si algo no cuadra.
+> Actualizado: 2026-08-08, rama `feature/venta-segura`. Las rutas `archivo:línea` antiguas pueden haberse desplazado durante la implementación.
 
 ## 1. Qué es este sistema
 
@@ -30,7 +30,19 @@ Durante la semana un cosechero puede:
 
 Los sábados los cosecheros pasan por la empresa para revisar y firmar la documentación correspondiente a los movimientos de la semana. Esta operación explica la lógica de `Venta`: los movimientos registrados entre lunes y sábado se asignan al sábado próximo y se consolidan en un solo ticket/cuenta semanal por cosechero. Si durante la misma semana se vuelve a guardar un movimiento para ese cosechero, el sistema reutiliza la venta semanal existente y agrega los nuevos cargos, en lugar de crear una factura independiente.
 
-> **Regla pendiente de precisar:** falta documentar si el botón **Guardar** representa solo una acumulación provisional, si la firma del sábado produce un cierre inmutable y cómo deben manejarse correcciones o movimientos tardíos después de la firma. El modelo actual no tiene un estado explícito de "abierto", "firmado" o "cerrado".
+La regla quedó confirmada: **Guardar** acumula sin imprimir y el cierre del sábado es informativo, no inmutable. **Registrar e imprimir** guarda primero y luego imprime el ticket semanal completo. Todo movimiento posterior vuelve a marcar el ticket como pendiente de impresión.
+
+Cada envío nuevo queda auditado en `OperacionVenta`, con UUID idempotente, usuario, fecha real del movimiento, fecha/hora de registro, hash del payload, importe agregado y solicitud de impresión. Los detalles históricos conservan `operacion=NULL`.
+
+## Estado técnico vigente de la interfaz
+
+- Ventas usa AJAX, errores inline, borrador por pestaña/usuario con expiración de 24 horas y resumen semanal previo al envío.
+- Tickets filtra y pagina 50 filas en servidor; la impresión solo acepta POST.
+- Cosecheros, artículos y proveedores cuentan con CRUD operativo Tailwind y desactivación lógica.
+- Dashboard calcula los dos lados de la conciliación por cosecha y exporta CSV sin persistir otro saldo.
+- `proximo_sabado()` vive en `app/business_dates.py`.
+- Configuración sensible y rutas locales se leen desde `.env`; el repositorio solo conserva `.env.example`.
+- Tailwind y Alpine son locales; no hay dependencia de fuentes web y existe favicon local.
 
 ### 1.3 Flujo funcional reflejado en el código
 
