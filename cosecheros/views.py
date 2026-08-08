@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 from urllib.parse import urlencode
 
-from cosecheros.forms import EntregaTabacoForm
+from cosecheros.forms import CosecheroForm, EntregaTabacoForm
 from cosecheros.models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
 from cosecheros.services import (
     CLASIFICACIONES,
@@ -338,6 +338,43 @@ def _contexto_listado(request, form=None, modal_cosechero=None):
 @require_GET
 def index(request):
     return render(request, 'index.html', _contexto_listado(request))
+
+
+@login_required
+def guardar_cosechero(request, cosechero_id=None):
+    cosechero = get_object_or_404(Cosechero, pk=cosechero_id, is_active=True) if cosechero_id else None
+    form = CosecheroForm(request.POST or None, instance=cosechero)
+    if request.method == 'POST' and form.is_valid():
+        objeto = form.save()
+        messages.success(request, f'Cosechero {objeto} guardado correctamente.')
+        return redirect('cosecheros')
+    return render(request, 'crud_form.html', {
+        'form': form,
+        'titulo': 'Editar cosechero' if cosechero else 'Nuevo cosechero',
+        'volver_url': reverse('cosecheros'),
+    }, status=400 if request.method == 'POST' else 200)
+
+
+@login_required
+@require_POST
+def eliminar_cosechero(request, cosechero_id):
+    cosechero = get_object_or_404(Cosechero, pk=cosechero_id, is_active=True)
+    cosechero.delete()
+    messages.success(request, f'{cosechero} fue desactivado.')
+    return redirect('cosecheros')
+
+
+@login_required
+@require_POST
+def alta_rapida_cosechero(request):
+    form = CosecheroForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({'success': False, 'errors': form.errors.get_json_data()}, status=400)
+    cosechero = form.save()
+    return JsonResponse({
+        'success': True,
+        'object': {'id': cosechero.id, 'nombre': str(cosechero)},
+    }, status=201)
 
 
 @login_required

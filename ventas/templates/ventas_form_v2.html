@@ -1,0 +1,435 @@
+{% extends 'base.html' %}
+{% block page_title %}Registro de Venta{% endblock %}
+
+{% block content %}
+<div x-data="ventaApp()" x-init="init()" class="space-y-5 pb-32">
+  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Registro de venta</h1>
+      <p class="mt-1 text-sm text-slate-400">La cuenta se acumula por cosechero, cosecha y sábado.</p>
+    </div>
+    <a href="{% url 'tickets' %}" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">
+      Ver tickets
+    </a>
+  </div>
+
+  <div x-cloak x-show="notificacion.mensaje" x-transition
+       class="flex items-start gap-3 rounded-xl border px-4 py-3"
+       :class="notificacion.tipo === 'error' ? 'border-red-700/60 bg-red-950/40 text-red-200' :
+               notificacion.tipo === 'warning' ? 'border-amber-700/60 bg-amber-950/40 text-amber-200' :
+               'border-emerald-700/60 bg-emerald-950/40 text-emerald-200'"
+       role="status" aria-live="polite">
+    <p class="flex-1 text-sm" x-text="notificacion.mensaje"></p>
+    <button x-show="impresionPendienteUrl" type="button" @click="reintentarImpresion()" class="text-sm font-semibold underline">Reintentar impresión</button>
+    <button type="button" @click="notificacion.mensaje = ''" class="text-current opacity-60 hover:opacity-100">Cerrar</button>
+  </div>
+
+  <div x-cloak x-show="borradorRestaurado"
+       class="flex flex-col gap-3 rounded-xl border border-blue-700/50 bg-blue-950/30 px-4 py-3 sm:flex-row sm:items-center">
+    <div class="flex-1">
+      <p class="text-sm font-medium text-blue-200">Borrador restaurado en esta pestaña</p>
+      <p class="text-xs text-blue-300/70" x-text="advertenciaBorrador || 'Se reconciliaron precios e inventario con los valores actuales.'"></p>
+    </div>
+    <button type="button" @click="descartarBorrador()" class="text-sm text-blue-300 hover:text-white">Descartar</button>
+  </div>
+
+  <form method="post" id="ventaForm" @submit.prevent>
+    {% csrf_token %}
+    <input type="hidden" name="accion" :value="accionSubmit">
+
+    <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+      <div class="grid gap-5 lg:grid-cols-3">
+        <div class="relative">
+          <div class="mb-2 flex items-center justify-between">
+            <label class="text-xs font-medium uppercase tracking-wider text-slate-400">Cosechero</label>
+            <button type="button" @click="modalCosechero = true" class="text-xs text-blue-300 hover:text-white">+ Alta rápida</button>
+          </div>
+          <input type="text" x-model="busquedaCosechero" @focus="selectorCosechero = true"
+                 @input="cosecheroId = ''; cosecheroNombre = ''; selectorCosechero = true; resumenSemanal = null; guardarBorrador()"
+                 @click.outside="selectorCosechero = false" autocomplete="off"
+                 placeholder="Escriba nombre o apellido"
+                 class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+          <input type="hidden" name="cosechero" :value="cosecheroId">
+          <div x-cloak x-show="selectorCosechero && busquedaCosechero.length > 0"
+               class="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 shadow-2xl">
+            <template x-for="persona in cosecherosFiltrados" :key="persona.id">
+              <button type="button" @click="seleccionarCosechero(persona)"
+                      class="block w-full border-b border-slate-700/50 px-4 py-2.5 text-left text-sm text-slate-200 last:border-0 hover:bg-slate-700">
+                <span x-text="persona.nombre"></span>
+              </button>
+            </template>
+            <p x-show="cosecherosFiltrados.length === 0" class="px-4 py-3 text-sm text-slate-500">Sin coincidencias</p>
+          </div>
+        </div>
+
+        <div>
+          <label class="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">Cosecha</label>
+          <select name="cosecha" x-model="cosechaId" @change="cargarResumen(); guardarBorrador()"
+                  class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            {% for cosecha in cosechas %}
+              <option value="{{ cosecha.id }}">{{ cosecha }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">Fecha real del movimiento</label>
+          <input type="date" name="fecha_venta" x-model="fechaVenta" @change="cargarResumen(); guardarBorrador()"
+                 class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+        </div>
+      </div>
+
+      <div x-cloak x-show="resumenSemanal" class="mt-5 grid gap-3 rounded-lg border border-slate-800 bg-slate-950/50 p-4 sm:grid-cols-3">
+        <div>
+          <p class="text-xs uppercase tracking-wider text-slate-500">Cierre semanal</p>
+          <p class="mt-1 text-sm font-medium text-white" x-text="formatearFecha(resumenSemanal?.sabado)"></p>
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-wider text-slate-500">Ticket</p>
+          <p class="mt-1 text-sm" :class="resumenSemanal?.ambigua ? 'text-red-300' : 'text-slate-200'"
+             x-text="resumenSemanal?.ambigua ? 'Bloqueado por duplicidad histórica' : (resumenSemanal?.existe ? '#' + resumenSemanal.venta_id : 'Se creará al guardar')"></p>
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-wider text-slate-500">Acumulado actual</p>
+          <p class="mt-1 font-mono text-sm font-semibold text-emerald-400" x-text="moneda(resumenSemanal?.total || 0)"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+      <div class="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center">
+        <div class="flex-1">
+          <h2 class="text-sm font-semibold text-white">Artículos</h2>
+          <p class="text-xs text-slate-500">Las cantidades admiten dos decimales.</p>
+        </div>
+        <button type="button" @click="modalArticulo = true" class="text-xs text-blue-300 hover:text-white">+ Nuevo artículo</button>
+        <input type="search" x-model="busquedaArticulo" placeholder="Buscar producto..."
+               class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 sm:w-80">
+      </div>
+      <div x-show="busquedaArticulo.length >= 2" class="max-h-72 overflow-y-auto">
+        <template x-for="articulo in articulosFiltrados" :key="articulo.id">
+          <div class="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-slate-800/70 px-4 py-3 last:border-0 sm:grid-cols-[1fr_100px_90px_90px]">
+            <div>
+              <p class="text-sm text-white" x-text="articulo.descripcion"></p>
+              <p class="text-xs text-slate-500" x-text="articulo.presentacion"></p>
+            </div>
+            <p class="hidden text-right font-mono text-sm text-emerald-400 sm:block" x-text="moneda(articulo.precio_venta)"></p>
+            <p class="hidden text-right font-mono text-sm text-slate-400 sm:block" x-text="articulo.inventario"></p>
+            <button type="button" @click="agregarArticulo(articulo)" :disabled="articulo.inventario <= 0"
+                    class="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-600/40 disabled:cursor-not-allowed disabled:opacity-30">Agregar</button>
+          </div>
+        </template>
+        <p x-show="articulosFiltrados.length === 0" class="p-6 text-center text-sm text-slate-500">No hay coincidencias con inventario.</p>
+      </div>
+
+      <div x-show="carrito.length > 0" class="overflow-x-auto border-t border-slate-800">
+        <table class="w-full min-w-[620px]">
+          <thead class="bg-slate-950/50 text-xs uppercase tracking-wider text-slate-500">
+            <tr><th class="px-4 py-2 text-left">Producto</th><th class="px-3 py-2 text-right">Precio</th><th class="px-3 py-2 text-center">Cantidad</th><th class="px-3 py-2 text-right">Subtotal</th><th></th></tr>
+          </thead>
+          <tbody>
+            <template x-for="(item, indice) in carrito" :key="item.id">
+              <tr class="border-t border-slate-800/70">
+                <td class="px-4 py-3 text-sm text-white" x-text="item.descripcion"></td>
+                <td class="px-3 py-3 text-right font-mono text-sm text-slate-300" x-text="moneda(item.precio)"></td>
+                <td class="px-3 py-3 text-center">
+                  <input type="number" min="0.01" step="0.01" x-model.number="item.cantidad" @change="validarCantidad(item); guardarBorrador()"
+                         class="w-24 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-center text-sm text-white">
+                </td>
+                <td class="px-3 py-3 text-right font-mono text-sm text-emerald-400" x-text="moneda(item.precio * item.cantidad)"></td>
+                <td class="px-3 py-3 text-right"><button type="button" @click="removerArticulo(indice)" class="text-sm text-red-400 hover:text-red-300">Quitar</button></td>
+                <input type="hidden" :name="'detalle_articulos-' + indice + '-articulo'" :value="item.id">
+                <input type="hidden" :name="'detalle_articulos-' + indice + '-cantidad'" :value="Number(item.cantidad).toFixed(2)">
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <input type="hidden" name="detalle_articulos-TOTAL_FORMS" :value="carrito.length">
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+      <div class="flex items-center justify-between border-b border-slate-800 p-4">
+        <div><h2 class="text-sm font-semibold text-white">Avances</h2><p class="text-xs text-slate-500">Efectivo, cheque o depósito.</p></div>
+        <button type="button" @click="modalAvance = true" class="rounded-lg bg-amber-600/20 px-3 py-2 text-sm text-amber-300 hover:bg-amber-600/40">Agregar avance</button>
+      </div>
+      <template x-for="(avance, indice) in avances" :key="indice">
+        <div class="flex items-center gap-3 border-b border-slate-800/70 px-4 py-3 last:border-0">
+          <span class="rounded bg-slate-800 px-2 py-1 text-xs uppercase text-slate-400" x-text="avance.tipo"></span>
+          <div class="flex-1"><p class="text-sm text-white" x-text="avance.descripcion"></p><p class="text-xs text-slate-500" x-text="avance.numero + ' · ' + avance.fecha"></p></div>
+          <p class="font-mono text-sm text-amber-300" x-text="moneda(avance.monto)"></p>
+          <button type="button" @click="removerAvance(indice)" class="text-sm text-red-400">Quitar</button>
+          <input type="hidden" :name="'detalle_avances-' + indice + '-descripcion'" :value="avance.descripcion">
+          <input type="hidden" :name="'detalle_avances-' + indice + '-tipo_avance'" :value="avance.tipo">
+          <input type="hidden" :name="'detalle_avances-' + indice + '-numero'" :value="avance.numero">
+          <input type="hidden" :name="'detalle_avances-' + indice + '-monto'" :value="avance.monto">
+          <input type="hidden" :name="'detalle_avances-' + indice + '-fecha'" :value="avance.fecha">
+          <input type="hidden" :name="'detalle_avances-' + indice + '-estado'" :value="avance.estado">
+        </div>
+      </template>
+      <p x-show="avances.length === 0" class="p-5 text-center text-sm text-slate-500">No hay avances agregados.</p>
+      <input type="hidden" name="detalle_avances-TOTAL_FORMS" :value="avances.length">
+    </section>
+  </form>
+
+  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 p-4 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center">
+      <div class="flex-1"><p class="text-xs uppercase tracking-wider text-slate-500">Movimiento a agregar</p><p class="font-mono text-xl font-bold text-white" x-text="moneda(totalVenta)"></p></div>
+      <button type="button" @click="submitVenta('guardar')" :disabled="enviando || resumenSemanal?.ambigua"
+              class="rounded-lg border border-slate-700 px-5 py-3 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-40">
+        <span x-text="enviando && accionSubmit === 'guardar' ? 'Guardando…' : 'Guardar'"></span>
+      </button>
+      <button type="button" @click="submitVenta('imprimir')" :disabled="enviando || resumenSemanal?.ambigua"
+              class="rounded-lg bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40">
+        <span x-text="enviando && accionSubmit === 'imprimir' ? estadoEnvio : 'Registrar e imprimir'"></span>
+      </button>
+    </div>
+  </div>
+
+  <div x-cloak x-show="modalAvance" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" @keydown.escape.window="modalAvance = false">
+    <div @click.outside="modalAvance = false" class="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 px-5 py-4"><h3 class="font-semibold text-white">Nuevo avance</h3><button type="button" @click="modalAvance=false" class="text-slate-400">Cerrar</button></div>
+      <div class="grid gap-4 p-5 sm:grid-cols-2">
+        <div><label class="mb-1 block text-xs text-slate-400">Tipo</label><select x-model="nuevoAvance.tipo" class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"><option value="efectivo">Efectivo</option><option value="cheque">Cheque</option><option value="deposito">Depósito</option></select></div>
+        <div><label class="mb-1 block text-xs text-slate-400">Número o referencia</label><input x-model.trim="nuevoAvance.numero" class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"></div>
+        <div><label class="mb-1 block text-xs text-slate-400">Monto</label><input type="number" min="0.01" step="0.01" x-model="nuevoAvance.monto" class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"></div>
+        <div><label class="mb-1 block text-xs text-slate-400">Fecha</label><input type="date" x-model="nuevoAvance.fecha" class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"></div>
+        <div class="sm:col-span-2"><label class="mb-1 block text-xs text-slate-400">Descripción</label><input x-model.trim="nuevoAvance.descripcion" class="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"></div>
+      </div>
+      <div class="flex justify-end gap-3 border-t border-slate-800 px-5 py-4"><button type="button" @click="modalAvance=false" class="px-3 py-2 text-sm text-slate-400">Cancelar</button><button type="button" @click="agregarAvance()" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white">Agregar</button></div>
+    </div>
+  </div>
+
+  <div x-cloak x-show="modalCosechero" class="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4">
+    <form @submit.prevent="crearCosechero($event)" class="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+      <div class="mb-4 flex justify-between"><h3 class="font-semibold text-white">Alta rápida de cosechero</h3><button type="button" @click="modalCosechero=false" class="text-sm text-slate-400">Cerrar</button></div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <input name="nombre" required placeholder="Nombre" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <input name="apellido" required placeholder="Apellido" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <input name="cedula" placeholder="Cédula (opcional)" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <input name="telefono" placeholder="Teléfono" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <input name="numero_cuenta_banco" placeholder="Cuenta bancaria (opcional)" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <input name="terreno_sembrado" required min="0" step="0.01" type="number" placeholder="Terreno sembrado" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <textarea name="direccion" required placeholder="Dirección" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white sm:col-span-2"></textarea>
+      </div>
+      <div class="mt-4 flex justify-end"><button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white">Crear y seleccionar</button></div>
+    </form>
+  </div>
+
+  <div x-cloak x-show="modalArticulo" class="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4">
+    <form @submit.prevent="crearArticulo($event)" class="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+      <div class="mb-4 flex justify-between"><h3 class="font-semibold text-white">Alta rápida de artículo</h3><button type="button" @click="modalArticulo=false" class="text-sm text-slate-400">Cerrar</button></div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <textarea name="descripcion" required placeholder="Descripción" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white sm:col-span-2"></textarea>
+        <select name="categoria" required class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"><template x-for="categoria in categorias" :key="categoria.valor"><option :value="categoria.valor" x-text="categoria.nombre"></option></template></select>
+        <input name="presentacion" required placeholder="Presentación" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <input name="cantidad_minima_orden" required min="1" type="number" placeholder="Cantidad mínima" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white">
+        <select name="proveedor" required class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"><option value="">Seleccione proveedor</option><template x-for="proveedor in proveedores" :key="proveedor.id"><option :value="proveedor.id" x-text="proveedor.nombre"></option></template></select>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">El artículo quedará disponible para venta cuando tenga inventario registrado en Compras.</p>
+      <div class="mt-4 flex justify-end"><button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white">Crear artículo</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function ventaApp() {
+  return {
+    usuarioId: '{{ usuario_id }}',
+    cosecheros: JSON.parse('{{ cosecheros_json|escapejs }}'),
+    articulos: JSON.parse('{{ articulos_json|escapejs }}'),
+    proveedores: JSON.parse('{{ proveedores_json|escapejs }}'),
+    categorias: JSON.parse('{{ categorias_json|escapejs }}'),
+    cosecheroId: '', cosecheroNombre: '', busquedaCosechero: '', selectorCosechero: false,
+    cosechaId: '{{ cosecha_default.id }}', fechaVenta: '{{ fecha_hoy }}',
+    busquedaArticulo: '', carrito: [], avances: [], modalAvance: false, modalCosechero: false, modalArticulo: false,
+    resumenSemanal: null, enviando: false, accionSubmit: 'guardar', estadoEnvio: 'Guardando…',
+    idempotencyKey: '', borradorRestaurado: false, advertenciaBorrador: '',
+    impresionPendienteUrl: '',
+    notificacion: { tipo: 'success', mensaje: '' },
+    nuevoAvance: { tipo: 'efectivo', numero: '', monto: '', fecha: '{{ fecha_hoy }}', descripcion: '', estado: 'realizado' },
+
+    init() {
+      this.idempotencyKey = this.nuevaClave();
+      this.restaurarBorrador();
+      if (this.cosecheroId) this.cargarResumen();
+    },
+    get claveBorrador() { return `tabacalera:venta:borrador:usuario:${this.usuarioId}`; },
+    normalizar(valor) { return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); },
+    get cosecherosFiltrados() {
+      const q = this.normalizar(this.busquedaCosechero);
+      if (!q) return [];
+      return this.cosecheros.filter(p => this.normalizar(p.nombre).includes(q)).slice(0, 8);
+    },
+    get articulosFiltrados() {
+      const q = this.normalizar(this.busquedaArticulo);
+      if (q.length < 2) return [];
+      return this.articulos.filter(a => this.normalizar(`${a.descripcion} ${a.presentacion} ${a.categoria}`).includes(q)).slice(0, 8);
+    },
+    get totalVenta() {
+      return this.carrito.reduce((t, i) => t + Number(i.precio) * Number(i.cantidad), 0)
+        + this.avances.reduce((t, a) => t + Number(a.monto), 0);
+    },
+    moneda(valor) { return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(Number(valor || 0)); },
+    formatearFecha(valor) { return valor ? new Date(`${valor}T12:00:00`).toLocaleDateString('es-DO') : ''; },
+    nuevaClave() {
+      if (window.crypto?.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+      });
+    },
+    avisar(mensaje, tipo='success') { this.notificacion = { mensaje, tipo }; window.scrollTo({ top: 0, behavior: 'smooth' }); },
+
+    seleccionarCosechero(persona) {
+      this.cosecheroId = String(persona.id); this.cosecheroNombre = persona.nombre;
+      this.busquedaCosechero = persona.nombre; this.selectorCosechero = false;
+      this.guardarBorrador(); this.cargarResumen();
+    },
+    async cargarResumen() {
+      if (!this.cosecheroId || !this.cosechaId || !this.fechaVenta) return;
+      const params = new URLSearchParams({ cosechero: this.cosecheroId, cosecha: this.cosechaId, fecha: this.fechaVenta });
+      try {
+        const respuesta = await fetch(`{% url 'resumen_semanal' %}?${params}`);
+        const data = await respuesta.json(); this.resumenSemanal = data;
+        if (!respuesta.ok) this.avisar(data.errors?.join(' ') || 'No se pudo consultar la semana.', 'error');
+      } catch (_) { this.avisar('No se pudo actualizar el resumen semanal.', 'warning'); }
+    },
+    agregarArticulo(articulo) {
+      if (Number(articulo.inventario) <= 0) return;
+      const existente = this.carrito.find(i => i.id === articulo.id);
+      if (existente) {
+        existente.cantidad = Number(existente.cantidad) + 1;
+        articulo.inventario = Math.max(0, Number(existente.maximo) - Number(existente.cantidad));
+      }
+      else this.carrito.push({ id: articulo.id, descripcion: articulo.descripcion, precio: Number(articulo.precio_venta), cantidad: 1, maximo: Number(articulo.inventario) });
+      if (!existente) articulo.inventario = Number(articulo.inventario) - 1;
+      this.busquedaArticulo = ''; this.guardarBorrador();
+    },
+    validarCantidad(item) {
+      item.cantidad = Math.round(Number(item.cantidad) * 100) / 100;
+      if (!Number.isFinite(item.cantidad) || item.cantidad <= 0) item.cantidad = 0.01;
+      if (item.cantidad > item.maximo) { item.cantidad = item.maximo; this.avisar(`La existencia máxima de ${item.descripcion} es ${item.maximo}.`, 'warning'); }
+      const articulo = this.articulos.find(a => a.id === item.id);
+      if (articulo) articulo.inventario = Math.max(0, Number(item.maximo) - Number(item.cantidad));
+    },
+    removerArticulo(indice) {
+      const item = this.carrito[indice]; const articulo = this.articulos.find(a => a.id === item.id);
+      if (articulo) articulo.inventario = Number(item.maximo);
+      this.carrito.splice(indice, 1); this.guardarBorrador();
+    },
+    agregarAvance() {
+      const monto = Number(this.nuevoAvance.monto);
+      if (!this.nuevoAvance.numero || !this.nuevoAvance.fecha || !Number.isFinite(monto) || monto <= 0) {
+        this.avisar('Complete número, fecha y un monto mayor que cero.', 'error'); return;
+      }
+      this.avances.push({ ...this.nuevoAvance, monto: monto.toFixed(2), descripcion: this.nuevoAvance.descripcion || `${this.nuevoAvance.tipo} #${this.nuevoAvance.numero}` });
+      this.nuevoAvance = { tipo: 'efectivo', numero: '', monto: '', fecha: this.fechaVenta, descripcion: '', estado: 'realizado' };
+      this.modalAvance = false; this.guardarBorrador();
+    },
+    removerAvance(indice) { this.avances.splice(indice, 1); this.guardarBorrador(); },
+    async enviarAlta(url, form) {
+      const datos = new FormData(form);
+      datos.append('csrfmiddlewaretoken', document.querySelector('#ventaForm input[name="csrfmiddlewaretoken"]').value);
+      const respuesta = await fetch(url, { method: 'POST', body: datos, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      const data = await respuesta.json();
+      if (!respuesta.ok) {
+        const errores = Object.values(data.errors || {}).flatMap(lista => lista.map(item => item.message));
+        throw new Error(errores.join(' ') || 'Revise los campos del formulario.');
+      }
+      return data.object;
+    },
+    async crearCosechero(evento) {
+      try {
+        const objeto = await this.enviarAlta('{% url "cosechero_alta_rapida" %}', evento.currentTarget);
+        this.cosecheros.push(objeto); this.seleccionarCosechero(objeto); this.modalCosechero = false;
+        evento.currentTarget.reset(); this.avisar(`${objeto.nombre} fue creado y seleccionado.`, 'success');
+      } catch (error) { this.avisar(error.message, 'error'); }
+    },
+    async crearArticulo(evento) {
+      try {
+        const objeto = await this.enviarAlta('{% url "articulo_alta_rapida" %}', evento.currentTarget);
+        this.articulos.push(objeto); this.modalArticulo = false; evento.currentTarget.reset();
+        this.busquedaArticulo = objeto.descripcion; this.avisar('Artículo creado. Registre una compra para habilitar su venta.', 'success');
+      } catch (error) { this.avisar(error.message, 'error'); }
+    },
+
+    guardarBorrador() {
+      if (!this.cosecheroId && !this.carrito.length && !this.avances.length) return;
+      sessionStorage.setItem(this.claveBorrador, JSON.stringify({
+        actualizado: Date.now(), cosecheroId: this.cosecheroId, cosecheroNombre: this.cosecheroNombre,
+        cosechaId: this.cosechaId, fechaVenta: this.fechaVenta, carrito: this.carrito,
+        avances: this.avances, idempotencyKey: this.idempotencyKey,
+      }));
+    },
+    restaurarBorrador() {
+      let borrador;
+      try { borrador = JSON.parse(sessionStorage.getItem(this.claveBorrador)); } catch (_) { sessionStorage.removeItem(this.claveBorrador); return; }
+      if (!borrador) return;
+      if (Date.now() - Number(borrador.actualizado || 0) > 86400000) { sessionStorage.removeItem(this.claveBorrador); this.avisar('El borrador anterior expiró después de 24 horas.', 'warning'); return; }
+      this.cosecheroId = String(borrador.cosecheroId || ''); this.cosecheroNombre = borrador.cosecheroNombre || '';
+      this.busquedaCosechero = this.cosecheroNombre; this.cosechaId = String(borrador.cosechaId || this.cosechaId);
+      this.fechaVenta = borrador.fechaVenta || this.fechaVenta; this.avances = Array.isArray(borrador.avances) ? borrador.avances : [];
+      this.idempotencyKey = borrador.idempotencyKey || this.nuevaClave();
+      let cambios = false;
+      this.carrito = (borrador.carrito || []).flatMap(item => {
+        const actual = this.articulos.find(a => a.id === item.id); if (!actual) { cambios = true; return []; }
+        const cantidad = Number(item.cantidad); const disponible = Number(actual.inventario);
+        if (Number(item.precio) !== Number(actual.precio_venta) || cantidad > disponible) cambios = true;
+        actual.inventario = Math.max(0, disponible - cantidad);
+        return [{ id: actual.id, descripcion: actual.descripcion, precio: Number(actual.precio_venta), cantidad, maximo: disponible }];
+      });
+      this.borradorRestaurado = true;
+      if (cambios) this.advertenciaBorrador = 'Algunos precios o existencias cambiaron; revise el borrador antes de guardar.';
+    },
+    descartarBorrador() {
+      sessionStorage.removeItem(this.claveBorrador); this.carrito = []; this.avances = [];
+      this.cosecheroId = ''; this.cosecheroNombre = ''; this.busquedaCosechero = '';
+      this.idempotencyKey = this.nuevaClave(); this.borradorRestaurado = false; this.resumenSemanal = null;
+      this.avisar('Borrador descartado.', 'success');
+    },
+    limpiarTrasGuardado() {
+      sessionStorage.removeItem(this.claveBorrador); this.carrito = []; this.avances = [];
+      this.idempotencyKey = this.nuevaClave(); this.borradorRestaurado = false;
+      this.articulos.forEach(a => a.inventario = Number(a.inventario));
+    },
+    async reintentarImpresion() {
+      if (!this.impresionPendienteUrl || this.enviando) return;
+      this.enviando = true;
+      try {
+        const token = document.querySelector('#ventaForm input[name="csrfmiddlewaretoken"]').value;
+        const respuesta = await fetch(this.impresionPendienteUrl, { method: 'POST', headers: { 'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await respuesta.json();
+        if (!respuesta.ok) return this.avisar(data.message || 'La impresión volvió a fallar.', 'warning');
+        this.impresionPendienteUrl = ''; this.avisar(data.message, 'success');
+      } catch (_) { this.avisar('No se pudo conectar con la impresora.', 'warning'); }
+      finally { this.enviando = false; }
+    },
+    async submitVenta(accion) {
+      if (this.enviando) return;
+      if (!this.cosecheroId) return this.avisar('Seleccione un cosechero.', 'error');
+      if (!this.carrito.length && !this.avances.length) return this.avisar('Agregue al menos un artículo o un avance.', 'error');
+      if (this.resumenSemanal?.ambigua) return this.avisar('Esta semana histórica está bloqueada por duplicidad.', 'error');
+      this.enviando = true; this.accionSubmit = accion; this.estadoEnvio = 'Guardando…'; this.guardarBorrador();
+      await this.$nextTick();
+      try {
+        const formulario = new FormData(document.getElementById('ventaForm'));
+        const respuesta = await fetch('{% url "ventas" %}', { method: 'POST', body: formulario, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json', 'Idempotency-Key': this.idempotencyKey } });
+        const data = await respuesta.json();
+        if (!respuesta.ok) { this.avisar((data.errors || ['No se pudo guardar.']).join(' '), 'error'); return; }
+        this.limpiarTrasGuardado(); this.resumenSemanal = { ...(this.resumenSemanal || {}), existe: true, venta_id: data.venta_id, total: data.total_semanal, impreso: false };
+        if (accion === 'imprimir') {
+          this.estadoEnvio = 'Imprimiendo…';
+          const impresion = await fetch(data.print_url, { method: 'POST', headers: { 'X-CSRFToken': formulario.get('csrfmiddlewaretoken'), 'X-Requested-With': 'XMLHttpRequest' } });
+          const resultadoImpresion = await impresion.json();
+          if (impresion.ok) { this.resumenSemanal.impreso = true; this.avisar(`Venta #${data.venta_id} guardada e impresa.`, 'success'); }
+          else { this.impresionPendienteUrl = data.print_url; this.avisar(resultadoImpresion.message || `Venta #${data.venta_id} guardada; impresión fallida.`, 'warning'); }
+        } else this.avisar(data.message, 'success');
+      } catch (_) { this.avisar('No se recibió confirmación. El borrador y la misma clave se conservaron para reintentar sin duplicar.', 'warning'); }
+      finally { this.enviando = false; this.estadoEnvio = 'Guardando…'; }
+    },
+  };
+}
+</script>
+{% endblock %}

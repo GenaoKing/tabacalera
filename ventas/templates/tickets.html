@@ -3,6 +3,11 @@
 
 {% block content %}
 <div x-data="ticketsApp()" class="space-y-6">
+  <form class="hidden">{% csrf_token %}</form>
+
+  <div x-cloak x-show="mensaje" class="rounded-lg border px-4 py-3 text-sm"
+       :class="mensajeTipo === 'error' ? 'border-red-700/50 bg-red-950/40 text-red-200' : 'border-emerald-700/50 bg-emerald-950/40 text-emerald-200'"
+       role="status" aria-live="polite" x-text="mensaje"></div>
 
   {# ── Header + Filtros ── #}
   <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -11,31 +16,18 @@
       <p class="text-sm text-slate-400 mt-1">Historial de ventas y despachos</p>
     </div>
 
-    <div class="flex items-center gap-3">
-      {# Filtro por cosecha #}
-      <select x-model="cosechaFiltro" @change="filtrarPorCosecha()"
-              class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white
-                     focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
-        <option value="">Todas las cosechas</option>
-        {% for cosecha in cosechas %}
-          <option value="{{ cosecha.id }}"
-                  {% if cosecha_seleccionada == cosecha.id %}selected{% endif %}>
-            {{ cosecha }}
-          </option>
-        {% endfor %}
-      </select>
-
-      {# Búsqueda #}
-      <div class="relative">
-        <svg class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-        <input type="text" x-model="busqueda" placeholder="Buscar cosechero..."
-               class="bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white
-                      placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition w-56">
-      </div>
-    </div>
   </div>
+
+  <form method="get" class="grid gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 md:grid-cols-5">
+    <select name="cosecha" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white">
+      <option value="">Todas las cosechas</option>
+      {% for cosecha in cosechas %}<option value="{{ cosecha.id }}" {% if cosecha_seleccionada == cosecha.id %}selected{% endif %}>{{ cosecha }}</option>{% endfor %}
+    </select>
+    <input name="q" value="{{ q }}" placeholder="Nombre del cosechero" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500">
+    <input type="date" name="desde" value="{{ desde }}" aria-label="Fecha inicial" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white">
+    <input type="date" name="hasta" value="{{ hasta }}" aria-label="Fecha final" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white">
+    <div class="flex gap-2"><button class="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white">Filtrar</button><a href="{% url 'tickets' %}" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300">Limpiar</a></div>
+  </form>
 
   {# ── Tabla de Ventas ── #}
   <div class="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
@@ -53,8 +45,7 @@
         </thead>
         <tbody>
           {% for venta in ventas %}
-          <tr class="border-t border-slate-800/60 hover:bg-slate-800/30 transition"
-              x-show="filtroVisible('{{ venta.cosechero.nombre|lower }} {{ venta.cosechero.apellido|lower }}')">
+          <tr class="border-t border-slate-800/60 hover:bg-slate-800/30 transition">
             <td class="px-5 py-3">
               <div class="flex items-center gap-2.5">
                 <span class="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center
@@ -90,7 +81,7 @@
                           d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                   </svg>
                 </button>
-                <button @click="imprimir({{ venta.id }})"
+                <button @click="imprimir({{ venta.id }})" :disabled="imprimiendo === {{ venta.id }}"
                         class="p-1.5 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-emerald-900/30 transition"
                         title="Imprimir ticket">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -112,6 +103,16 @@
       </table>
     </div>
   </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <nav class="flex items-center justify-between text-sm text-slate-400" aria-label="Paginación de tickets">
+    <p>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} tickets</p>
+    <div class="flex gap-2">
+      {% if page_obj.has_previous %}<a class="rounded-lg border border-slate-700 px-3 py-2 hover:bg-slate-800" href="?{% if filtros_query %}{{ filtros_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+      {% if page_obj.has_next %}<a class="rounded-lg border border-slate-700 px-3 py-2 hover:bg-slate-800" href="?{% if filtros_query %}{{ filtros_query }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+    </div>
+  </nav>
+  {% endif %}
 
   {# ══════════════════════════════════════════════
      MODAL: Detalle de Venta
@@ -208,26 +209,12 @@
 <script>
 function ticketsApp() {
   return {
-    busqueda: '',
-    cosechaFiltro: '{{ cosecha_seleccionada|default:"" }}',
+    mensaje: '',
+    mensajeTipo: 'success',
+    imprimiendo: null,
     modalDetalle: false,
     cargandoDetalle: false,
     detalleVenta: {},
-
-    filtroVisible(nombre) {
-      if (!this.busqueda) return true;
-      return nombre.includes(this.busqueda.toLowerCase());
-    },
-
-    filtrarPorCosecha() {
-      const params = new URLSearchParams(window.location.search);
-      if (this.cosechaFiltro) {
-        params.set('cosecha', this.cosechaFiltro);
-      } else {
-        params.delete('cosecha');
-      }
-      window.location.search = params.toString();
-    },
 
     async verDetalles(ventaId) {
       this.modalDetalle = true;
@@ -250,28 +237,33 @@ function ticketsApp() {
     },
 
     async imprimir(ventaId) {
+      this.imprimiendo = ventaId;
+      this.mensaje = 'Imprimiendo ticket semanal completo…';
+      this.mensajeTipo = 'success';
       try {
         const url = `{% url 'view_imprimir' 0 %}`.replace('0', ventaId);
         const resp = await fetch(url, {
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+          }
         });
         const data = await resp.json();
 
         if (data.success) {
-          // Actualizar estado visual
-          const badge = event.target.closest('tr')?.querySelector('[class*="bg-amber"]');
-          if (badge) {
-            badge.textContent = 'Impreso';
-            badge.className = badge.className
-              .replace('bg-amber-900/40', 'bg-emerald-900/40')
-              .replace('text-amber-300', 'text-emerald-300');
-          }
+          this.mensaje = data.message;
+          window.setTimeout(() => window.location.reload(), 700);
         } else {
-          alert(data.message || 'Error al imprimir');
+          this.mensaje = data.message || 'Error al imprimir';
+          this.mensajeTipo = 'error';
         }
       } catch (e) {
-        alert('Error de conexión al imprimir');
+        this.mensaje = 'La venta sigue guardada, pero no se pudo conectar con la impresora.';
+        this.mensajeTipo = 'error';
         console.error(e);
+      } finally {
+        this.imprimiendo = null;
       }
     },
   };

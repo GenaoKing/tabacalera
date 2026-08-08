@@ -36,6 +36,8 @@ urlpatterns = [
     path('ventas/',include('ventas.urls'),name='ventas'),
     path('compra/',include('compra.urls'),name='compras'),
     path('avances/',include('avance.urls'),name='avances'),
+    path('proveedores/', include('proveedor.urls')),
+    path('articulos/', include('articulo.urls')),
     path('logout/', LogoutView.as_view(next_page='login'), name='logout'),
 
 ]

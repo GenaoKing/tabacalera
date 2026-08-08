@@ -3,12 +3,16 @@ from django.core.exceptions import ValidationError
 
 
 def validate_cedula(value):
-  cedula = value
+  cedula = (value or '').strip()
+  if not cedula:
+    return
   #cleanup
   cedula = cedula.replace('-','') 
   # La cédula debe tener 11 dígitos
+  if not cedula.isdigit():
+    raise ValidationError('La cédula solo puede contener números y guiones.')
   if len(cedula)!= 11:
-    raise ValidationError('La cédula debe tener una longitud de 13 caracteres.')
+    raise ValidationError('La cédula debe contener 11 dígitos.')
   if (int(cedula[0:3]) != 402 and int(cedula[0:3]) > 121 and int(cedula[0:3]) < 1):
     raise ValidationError('El formato de la cédula debe ser XXX-XXXXXXX-X')
     

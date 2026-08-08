@@ -6,16 +6,21 @@ Toda la lógica de negocio está en services.py.
 """
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.serializers.json import DjangoJSONEncoder
-from django.http import HttpResponse, JsonResponse
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from app.business_dates import proximo_sabado
+from articulo.models import Articulo
 from cosecheros.models import Cosechero, Cosecha
+from proveedor.models import Proveedor
 
 from .models import Venta
 from .services import (
@@ -153,30 +158,50 @@ def registrar_venta(request):
     """
     if request.method == 'POST':
         accion = request.POST.get('accion', 'guardar')
-        imprimir = (accion == 'imprimir')
+        imprimir = accion == 'imprimir'
 
         resultado = procesar_venta(
             post_data=request.POST,
-            imprimir=False,  # La impresión se maneja aparte
+            imprimir=imprimir,
+            idempotency_key=request.headers.get('Idempotency-Key'),
+            usuario=request.user,
+        )
+
+        quiere_json = (
+            request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            or 'application/json' in request.headers.get('Accept', '')
         )
 
         if resultado['success']:
             venta = resultado['venta']
 
-            if imprimir:
-                exito_impresion = _imprimir_ticket(request, venta)
-                if exito_impresion:
-                    messages.success(request, f'Venta #{venta.id} registrada e impresa.')
-                else:
-                    messages.warning(
-                        request,
-                        f'Venta #{venta.id} registrada pero no se pudo imprimir.'
-                    )
-            else:
-                messages.success(request, f'Venta #{venta.id} guardada correctamente.')
+            if quiere_json:
+                return JsonResponse({
+                    'success': True,
+                    'venta_id': venta.id,
+                    'operacion': str(resultado['operacion'].clave),
+                    'replayed': resultado.get('replayed', False),
+                    'total_semanal': float(venta.total),
+                    'impreso': venta.impreso,
+                    'print_url': request.build_absolute_uri(
+                        f'/ventas/imprimir/{venta.id}/'
+                    ),
+                    'message': (
+                        'La operación ya estaba registrada.'
+                        if resultado.get('replayed')
+                        else f'Venta #{venta.id} guardada.'
+                    ),
+                })
+
+            messages.success(request, f'Venta #{venta.id} guardada correctamente.')
 
             return redirect('ventas')
         else:
+            if quiere_json:
+                return JsonResponse(
+                    {'success': False, 'errors': resultado['errors']},
+                    status=409 if resultado.get('idempotency_conflict') else 400,
+                )
             for error in resultado['errors']:
                 messages.error(request, error)
 
@@ -184,7 +209,13 @@ def registrar_venta(request):
     cosecha_ctx = obtener_contexto_cosecha_default()
 
     context = {
-        'cosecheros': Cosechero.objects.filter(is_active=True).order_by('nombre', 'apellido'),
+        'cosecheros_json': json.dumps([
+            {
+                'id': cosechero.id,
+                'nombre': f'{cosechero.nombre} {cosechero.apellido}'.strip(),
+            }
+            for cosechero in Cosechero.objects.filter(is_active=True).order_by('nombre', 'apellido')
+        ], cls=DjangoJSONEncoder),
         'articulos_json': json.dumps(
             obtener_articulos_con_inventario(),
             cls=DjangoJSONEncoder,
@@ -192,9 +223,18 @@ def registrar_venta(request):
         'cosechas': cosecha_ctx['cosechas'],
         'cosecha_default': cosecha_ctx['cosecha_default'],
         'fecha_hoy': date.today().isoformat(),
+        'usuario_id': request.user.id,
+        'proveedores_json': json.dumps([
+            {'id': proveedor.id, 'nombre': proveedor.nombre}
+            for proveedor in Proveedor.objects.filter(is_active=True).order_by('nombre')
+        ], cls=DjangoJSONEncoder),
+        'categorias_json': json.dumps([
+            {'valor': valor, 'nombre': nombre}
+            for valor, nombre in Articulo.CATEGORIAS_CHOICES
+        ], cls=DjangoJSONEncoder),
     }
 
-    return render(request, 'ventas_form.html', context)
+    return render(request, 'ventas_form_v2.html', context)
 
 
 # ─────────────────────────────────────────────
@@ -204,7 +244,7 @@ def registrar_venta(request):
 @login_required
 @require_GET
 def get_tickets(request):
-    """Lista todas las ventas activas para la vista de tickets."""
+    """Lista ventas activas, filtradas y paginadas en el servidor."""
     cosecha_ctx = obtener_contexto_cosecha_default()
     cosecha_id = request.GET.get('cosecha')
 
@@ -215,11 +255,33 @@ def get_tickets(request):
     if cosecha_id:
         ventas = ventas.filter(cosecha_id=cosecha_id)
 
+    q = request.GET.get('q', '').strip()
+    desde = request.GET.get('desde', '').strip()
+    hasta = request.GET.get('hasta', '').strip()
+    if q:
+        ventas = ventas.filter(
+            Q(cosechero__nombre__icontains=q)
+            | Q(cosechero__apellido__icontains=q)
+        )
+    if desde:
+        ventas = ventas.filter(fecha_venta__gte=desde)
+    if hasta:
+        ventas = ventas.filter(fecha_venta__lte=hasta)
+
+    pagina = Paginator(ventas, 50).get_page(request.GET.get('page'))
+    filtros = request.GET.copy()
+    filtros.pop('page', None)
+
     context = {
-        'ventas': ventas,
+        'ventas': pagina.object_list,
+        'page_obj': pagina,
         'cosechas': cosecha_ctx['cosechas'],
         'cosecha_default': cosecha_ctx['cosecha_default'],
         'cosecha_seleccionada': int(cosecha_id) if cosecha_id else None,
+        'q': q,
+        'desde': desde,
+        'hasta': hasta,
+        'filtros_query': filtros.urlencode(),
     }
     return render(request, 'tickets.html', context)
 
@@ -242,18 +304,49 @@ def detalles_venta(request, venta_id: int):
 # ─────────────────────────────────────────────
 
 @login_required
-@require_GET
+@require_POST
 def view_imprimir(request, venta_id: int):
     """Endpoint para imprimir un ticket desde la lista de tickets."""
     venta = get_object_or_404(Venta, pk=venta_id, is_active=True)
     exito = _imprimir_ticket(request, venta)
 
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse({
-            'success': exito,
-            'message': 'Impreso correctamente' if exito else 'Error al imprimir',
-        })
+    return JsonResponse({
+        'success': exito,
+        'venta_id': venta.id,
+        'impreso': venta.impreso,
+        'message': 'Impreso correctamente' if exito else 'La venta está guardada, pero falló la impresión.',
+    }, status=200 if exito else 503)
 
-    if exito:
-        return HttpResponse(f"Impresión realizada para la venta #{venta_id}")
-    return HttpResponse(f"Error al imprimir la venta #{venta_id}", status=500)
+
+@login_required
+@require_GET
+def resumen_semanal(request):
+    """Resume la cuenta semanal exacta de la selección del formulario."""
+    try:
+        cosechero_id = int(request.GET.get('cosechero', ''))
+        cosecha_id = int(request.GET.get('cosecha', ''))
+        fecha = datetime.strptime(request.GET.get('fecha', ''), '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return JsonResponse({'errors': ['Selección semanal incompleta.']}, status=400)
+
+    sabado = proximo_sabado(fecha)
+    ventas = Venta.objects.filter(
+        cosechero_id=cosechero_id,
+        cosecha_id=cosecha_id,
+        fecha_venta=sabado,
+        is_active=True,
+    ).order_by('id')
+    if ventas.count() > 1:
+        return JsonResponse({
+            'errors': ['Esta semana contiene tickets históricos duplicados y no admite movimientos nuevos.'],
+            'sabado': sabado.isoformat(),
+            'ambigua': True,
+        }, status=409)
+    venta = ventas.first()
+    return JsonResponse({
+        'sabado': sabado.isoformat(),
+        'existe': venta is not None,
+        'venta_id': venta.id if venta else None,
+        'total': float(venta.total) if venta else 0,
+        'impreso': venta.impreso if venta else False,
+    })
