@@ -12,20 +12,44 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _cargar_entorno_local():
+    """Carga pares CLAVE=VALOR desde .env sin añadir dependencias externas."""
+    ruta = BASE_DIR / '.env'
+    if not ruta.exists():
+        return
+    for linea in ruta.read_text(encoding='utf-8').splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith('#') or '=' not in linea:
+            continue
+        clave, valor = linea.split('=', 1)
+        os.environ.setdefault(clave.strip(), valor.strip())
+
+
+def _entorno_bool(nombre, default=False):
+    return os.getenv(nombre, str(default)).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+_cargar_entorno_local()
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure--*!g(5+c9ldgvyby=34-iter_^y1gi=@b&m-^5=j@!^vc26xke"
+SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _entorno_bool('DJANGO_DEBUG', False)
 
-ALLOWED_HOSTS = ['*','192.168.43.90']
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    if host.strip()
+]
 
 
 # Application definition
@@ -97,8 +121,8 @@ LOGOUT_REDIRECT_URL = "login"
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
-        'NAME': 'Tabacalera',  # Nombre de tu base de datos
-        'HOST': 'DESKTOP-VGQEGRL',  # Nombre del servidor SQL Server
+        'NAME': os.getenv('DB_NAME', 'Tabacalera'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',  # Driver de SQL Server
             'Trusted_Connection': 'yes',
@@ -135,7 +159,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = os.getenv('DJANGO_TIME_ZONE', 'America/Santo_Domingo')
 
 USE_I18N = True
 
@@ -148,12 +172,16 @@ USE_TZ = True
 STATIC_URL = "/static/"
 
 # Carpeta destino de collectstatic (lo que WhiteNoise servirá)
-STATIC_ROOT = r"C:\tabacalera\staticfiles"
+STATIC_ROOT = os.getenv('DJANGO_STATIC_ROOT', str(BASE_DIR / 'staticfiles'))
 
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # Storage recomendado (gzip + hash en nombres)
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STATICFILES_STORAGE = (
+    'django.contrib.staticfiles.storage.StaticFilesStorage'
+    if 'test' in sys.argv
+    else 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
