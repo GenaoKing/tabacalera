@@ -7,3 +7,4 @@ from ventas.models import *
 admin.site.register(Venta)
 admin.site.register(DetalleArticulo)
 admin.site.register(DetalleAvance)
+admin.site.register(OperacionVenta)

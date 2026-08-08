@@ -13,6 +13,7 @@ from typing import Optional
 import pandas as pd
 from django.db import transaction
 
+from app.business_dates import proximo_sabado
 from avance.models import Avance
 from cosecheros.models import Cosechero, Cosecha
 from ventas.models import Venta, DetalleAvance
@@ -114,18 +115,6 @@ def parse_fecha_from_filename(fname: str) -> Optional[date]:
         return datetime.strptime(m.group(0), '%m-%d-%y').date()
     except ValueError:
         return None
-
-
-def proximo_sabado(fecha_venta: date) -> date:
-    """
-    Retorna el próximo sábado (o el mismo día si es sábado).
-    Idéntica a la función en ventas/views.py para mantener consistencia.
-    Las ventas se computan los sábados — los items se acumulan durante la semana.
-    """
-    dias_hasta_sabado = (5 - fecha_venta.weekday()) % 7  # 5 = sábado
-    if dias_hasta_sabado == 0:
-        return fecha_venta
-    return fecha_venta + timedelta(days=dias_hasta_sabado)
 
 
 # ─────────────────────────────────────────────

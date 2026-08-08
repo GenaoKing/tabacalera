@@ -5,21 +5,25 @@ Capa de servicios para el módulo de ventas.
 Toda la lógica de negocio vive aquí, las views solo orquestan HTTP.
 """
 import decimal
+import hashlib
+import json
 import logging
-from datetime import date, timedelta
+import uuid
+from datetime import date
 from decimal import Decimal
 from itertools import groupby
 from typing import Optional
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Sum
 
+from app.business_dates import proximo_sabado
 from articulo.models import Articulo
 from avance.models import Avance
 from compra.models import DetalleCompra
 from cosecheros.models import Cosechero, Cosecha
 
-from .models import Venta, DetalleArticulo, DetalleAvance
+from .models import Venta, DetalleArticulo, DetalleAvance, OperacionVenta
 
 logger = logging.getLogger(__name__)
 
@@ -28,42 +32,42 @@ logger = logging.getLogger(__name__)
 # Utilidades de fecha (sábado = cierre semanal)
 # ─────────────────────────────────────────────
 
-def proximo_sabado(fecha_venta: date) -> date:
-    """
-    Retorna el próximo sábado (o el mismo día si es sábado).
-    Las ventas se computan los sábados — los items se acumulan durante la semana.
-    """
-    dias_hasta_sabado = (5 - fecha_venta.weekday()) % 7
-    if dias_hasta_sabado == 0:
-        return fecha_venta
-    return fecha_venta + timedelta(days=dias_hasta_sabado)
-
-
-def obtener_venta_existente(cosechero_id: int, fecha_sabado: date) -> Optional[Venta]:
-    """Busca una venta existente para el cosechero en la semana de fecha_sabado."""
-    inicio_semana = fecha_sabado - timedelta(days=fecha_sabado.weekday())
-    fin_semana = inicio_semana + timedelta(days=6)
-    return Venta.objects.filter(
+def obtener_venta_existente(
+    cosechero_id: int,
+    cosecha_id: int,
+    fecha_sabado: date,
+) -> Optional[Venta]:
+    """Busca la cuenta semanal exacta y detecta historia ambigua."""
+    ventas = Venta.objects.filter(
         cosechero_id=cosechero_id,
-        fecha_venta__range=(inicio_semana, fin_semana),
+        cosecha_id=cosecha_id,
+        fecha_venta=fecha_sabado,
         is_active=True,
-    ).first()
+    ).order_by('id')
+    if ventas.count() > 1:
+        raise ValueError(
+            'Esta semana tiene más de un ticket histórico activo. '
+            'No se agregarán movimientos automáticamente.'
+        )
+    return ventas.first()
 
 
 # ─────────────────────────────────────────────
 # Inventario y precios (FIFO por lotes)
 # ─────────────────────────────────────────────
 
-def calcular_inventario_articulo(articulo_id: int) -> Decimal:
+def calcular_inventario_articulo(articulo_id: int, bloquear: bool = False) -> Decimal:
     """Retorna el inventario total disponible para un artículo."""
-    return DetalleCompra.objects.filter(
+    lotes = DetalleCompra.objects.filter(
         articulo_id=articulo_id,
         cantidad_restante__gt=0,
         compra__is_active=True,
         is_active=True,
-    ).aggregate(
-        total=Sum('cantidad_restante')
-    )['total'] or Decimal('0')
+    ).order_by('pk')
+    if bloquear:
+        lotes = lotes.select_for_update()
+        return sum((lote.cantidad_restante for lote in lotes), Decimal('0'))
+    return lotes.aggregate(total=Sum('cantidad_restante'))['total'] or Decimal('0')
 
 
 def obtener_articulos_con_inventario() -> list[dict]:
@@ -151,14 +155,14 @@ def consumir_lotes_fifo(articulo_id: int, cantidad_solicitada) -> list[dict]:
 # Validación de inventario
 # ─────────────────────────────────────────────
 
-def validar_inventario_suficiente(items: list[dict]) -> list[str]:
+def validar_inventario_suficiente(items: list[dict], bloquear: bool = False) -> list[str]:
     """
     Recibe lista de {'articulo_id': int, 'cantidad': Decimal}.
     Retorna lista de errores (vacía si todo OK).
     """
     errores = []
     for item in items:
-        inv = calcular_inventario_articulo(item['articulo_id'])
+        inv = calcular_inventario_articulo(item['articulo_id'], bloquear=bloquear)
         if inv < Decimal(str(item['cantidad'])):
             try:
                 art = Articulo.objects.get(id=item['articulo_id'])
@@ -204,11 +208,20 @@ def extraer_avances_validados(post_data: dict) -> tuple[list[dict], list[str]]:
             errores.append(f"Avance #{i + 1}: falta {', '.join(faltantes)}.")
             continue
 
+        try:
+            monto_decimal = Decimal(monto)
+        except (decimal.InvalidOperation, ValueError):
+            errores.append(f"Avance #{i + 1}: monto inválido.")
+            continue
+        if monto_decimal <= 0:
+            errores.append(f"Avance #{i + 1}: el monto debe ser mayor que cero.")
+            continue
+
         avances_data.append({
             'descripcion': descripcion or f"Avance {tipo_avance} #{numero}",
             'tipo_avance': tipo_avance,
             'numero': numero,
-            'monto_pagado': Decimal(monto),
+            'monto_pagado': monto_decimal,
             'estado': estado,
             'fecha': fecha,
         })
@@ -231,23 +244,87 @@ def crear_avances(avances_data: list[dict], cosechero: Cosechero) -> list[Avance
 def _extraer_items_articulo(post_data: dict) -> list[dict]:
     """Extrae los items de artículo del POST data."""
     total = int(post_data.get('detalle_articulos-TOTAL_FORMS', 0))
-    items = []
+    cantidades = {}
 
     for i in range(total):
         articulo_id = post_data.get(f'detalle_articulos-{i}-articulo')
         cantidad = post_data.get(f'detalle_articulos-{i}-cantidad')
 
         if articulo_id and cantidad:
-            items.append({
-                'articulo_id': int(articulo_id),
-                'cantidad': Decimal(str(cantidad)),
-            })
+            try:
+                cantidad_decimal = Decimal(str(cantidad))
+                articulo_entero = int(articulo_id)
+            except (decimal.InvalidOperation, TypeError, ValueError):
+                continue
+            cantidades[articulo_entero] = (
+                cantidades.get(articulo_entero, Decimal('0')) + cantidad_decimal
+            )
 
-    return items
+    return [
+        {'articulo_id': articulo_id, 'cantidad': cantidad}
+        for articulo_id, cantidad in sorted(cantidades.items())
+    ]
+
+
+def _huella_operacion(
+    cosechero_id: int,
+    cosecha_id: int,
+    fecha_movimiento: date,
+    items: list[dict],
+    avances: list[dict],
+    imprimir: bool,
+) -> str:
+    payload = {
+        'cosechero_id': cosechero_id,
+        'cosecha_id': cosecha_id,
+        'fecha_movimiento': fecha_movimiento.isoformat(),
+        'items': [
+            {'articulo_id': i['articulo_id'], 'cantidad': str(i['cantidad'])}
+            for i in items
+        ],
+        'avances': [
+            {
+                key: str(value) if isinstance(value, Decimal) else value
+                for key, value in avance.items()
+            }
+            for avance in avances
+        ],
+        'imprimir': imprimir,
+    }
+    serializado = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
+    return hashlib.sha256(serializado.encode('utf-8')).hexdigest()
+
+
+def _adquirir_bloqueo_semana(cosechero_id: int, cosecha_id: int, fecha_sabado: date):
+    """Serializa altas sobre una misma cuenta semanal en SQL Server."""
+    if connection.vendor != 'microsoft':
+        return
+    recurso = f'venta-semanal:{cosechero_id}:{cosecha_id}:{fecha_sabado.isoformat()}'
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DECLARE @resultado int;
+            EXEC @resultado = sp_getapplock
+                @Resource = %s,
+                @LockMode = 'Exclusive',
+                @LockOwner = 'Transaction',
+                @LockTimeout = 10000;
+            SELECT @resultado;
+            """,
+            [recurso],
+        )
+        resultado = cursor.fetchone()[0]
+    if resultado < 0:
+        raise TimeoutError('No se pudo bloquear la cuenta semanal. Intente nuevamente.')
 
 
 @transaction.atomic
-def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
+def procesar_venta(
+    post_data: dict,
+    imprimir: bool = False,
+    idempotency_key=None,
+    usuario=None,
+) -> dict:
     """
     Procesa una venta completa:
     1. Valida inventario
@@ -259,15 +336,18 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
     Retorna: {'success': bool, 'venta': Venta|None, 'errors': list}
     """
     # ── Extraer datos básicos ──
-    cosechero_id = int(post_data.get('cosechero', 0))
-    cosecha_id = int(post_data.get('cosecha', 0))
+    try:
+        cosechero_id = int(post_data.get('cosechero', 0))
+        cosecha_id = int(post_data.get('cosecha', 0))
+    except (TypeError, ValueError):
+        return {'success': False, 'venta': None, 'errors': ['Datos incompletos']}
     fecha_raw = post_data.get('fecha_venta', '')
 
     if not all([cosechero_id, cosecha_id, fecha_raw]):
         return {'success': False, 'venta': None, 'errors': ['Datos incompletos']}
 
     try:
-        cosechero = Cosechero.objects.get(id=cosechero_id)
+        cosechero = Cosechero.objects.get(id=cosechero_id, is_active=True)
         cosecha = Cosecha.objects.get(id=cosecha_id)
     except (Cosechero.DoesNotExist, Cosecha.DoesNotExist) as e:
         return {'success': False, 'venta': None, 'errors': [str(e)]}
@@ -284,6 +364,12 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
     # ── Extraer y validar items ──
     items = _extraer_items_articulo(post_data)
 
+    if any(item['cantidad'] <= 0 for item in items):
+        return {
+            'success': False, 'venta': None,
+            'errors': ['Las cantidades de artículos deben ser mayores que cero.'],
+        }
+
     if items:
         errores_inv = validar_inventario_suficiente(items)
         if errores_inv:
@@ -294,8 +380,60 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
     if errores_avance:
         return {'success': False, 'venta': None, 'errors': errores_avance}
 
+    if not items and not avances_data:
+        return {
+            'success': False, 'venta': None,
+            'errors': ['Agregue al menos un artículo o un avance.'],
+        }
+
+    try:
+        clave = uuid.UUID(str(idempotency_key)) if idempotency_key else uuid.uuid4()
+    except (TypeError, ValueError, AttributeError):
+        return {'success': False, 'venta': None, 'errors': ['Clave de operación inválida.']}
+
+    huella = _huella_operacion(
+        cosechero_id, cosecha_id, fecha_venta, items, avances_data, imprimir,
+    )
+    operacion_existente = OperacionVenta.objects.filter(clave=clave).select_related('venta').first()
+    if operacion_existente:
+        if operacion_existente.huella_payload != huella:
+            return {
+                'success': False, 'venta': operacion_existente.venta,
+                'errors': ['La clave de operación ya fue usada con datos diferentes.'],
+                'idempotency_conflict': True,
+            }
+        return {
+            'success': True, 'venta': operacion_existente.venta, 'errors': [],
+            'operacion': operacion_existente, 'replayed': True,
+        }
+
+    _adquirir_bloqueo_semana(cosechero_id, cosecha_id, fecha_sabado)
+
+    # Revalidar tras adquirir el bloqueo: otra solicitud pudo terminar mientras esperábamos.
+    operacion_existente = OperacionVenta.objects.filter(clave=clave).select_related('venta').first()
+    if operacion_existente:
+        if operacion_existente.huella_payload != huella:
+            return {
+                'success': False, 'venta': operacion_existente.venta,
+                'errors': ['La clave de operación ya fue usada con datos diferentes.'],
+                'idempotency_conflict': True,
+            }
+        return {
+            'success': True, 'venta': operacion_existente.venta, 'errors': [],
+            'operacion': operacion_existente, 'replayed': True,
+        }
+
+    # Bloquear los lotes en orden estable y revalidar tras cualquier espera.
+    if items:
+        errores_inv = validar_inventario_suficiente(items, bloquear=True)
+        if errores_inv:
+            return {'success': False, 'venta': None, 'errors': errores_inv}
+
     # ── Obtener o crear venta ──
-    venta_existente = obtener_venta_existente(cosechero_id, fecha_sabado)
+    try:
+        venta_existente = obtener_venta_existente(cosechero_id, cosecha_id, fecha_sabado)
+    except ValueError as exc:
+        return {'success': False, 'venta': None, 'errors': [str(exc)]}
 
     if venta_existente:
         venta = venta_existente
@@ -305,8 +443,18 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
             cosecha=cosecha,
             fecha_venta=fecha_sabado,
             total=Decimal('0'),
-            impreso=imprimir,
+            impreso=False,
         )
+
+    operacion = OperacionVenta.objects.create(
+        clave=clave,
+        venta=venta,
+        usuario=usuario if getattr(usuario, 'is_authenticated', False) else None,
+        fecha_movimiento=fecha_venta,
+        huella_payload=huella,
+        total_movimiento=Decimal('0'),
+        impresion_solicitada=imprimir,
+    )
 
     # ── Crear detalles de artículos (FIFO) ──
     # bulk_create no dispara señales post_save por fila: evita recalcular
@@ -317,6 +465,7 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
         for lote in lotes:
             detalles_articulo.append(DetalleArticulo(
                 venta=venta,
+                operacion=operacion,
                 articulo_id=item['articulo_id'],
                 cantidad=lote['cantidad'],
                 precio_venta_final=lote['precio_venta'],
@@ -327,7 +476,10 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
     # ── Crear avances ──
     avances = crear_avances(avances_data, cosechero)
     detalles_avance = [
-        DetalleAvance(venta=venta, avance=avance, monto=avance.monto_pagado)
+        DetalleAvance(
+            venta=venta, operacion=operacion,
+            avance=avance, monto=avance.monto_pagado,
+        )
         for avance in avances
     ]
     if detalles_avance:
@@ -335,9 +487,18 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
 
     # ── Recalcular total (una sola vez) ──
     venta.update_total()
+    total_articulos_operacion = sum(
+        (d.cantidad * d.precio_venta_final for d in detalles_articulo),
+        Decimal('0'),
+    )
+    total_avances_operacion = sum(
+        (d.monto for d in detalles_avance), Decimal('0'),
+    )
+    operacion.total_movimiento = total_articulos_operacion + total_avances_operacion
+    operacion.save(update_fields=['total_movimiento'])
 
-    if imprimir:
-        venta.impreso = True
+    if venta.impreso:
+        venta.impreso = False
         venta.save(update_fields=['impreso'])
 
     logger.info(
@@ -345,7 +506,10 @@ def procesar_venta(post_data: dict, imprimir: bool = False) -> dict:
         f"artículos={len(items)}, avances={len(avances)}, total={venta.total}"
     )
 
-    return {'success': True, 'venta': venta, 'errors': []}
+    return {
+        'success': True, 'venta': venta, 'errors': [],
+        'operacion': operacion, 'replayed': False,
+    }
 
 
 # ─────────────────────────────────────────────

@@ -1,5 +1,8 @@
+import uuid
 from decimal import Decimal
 
+from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Sum
 from django.forms import ValidationError
@@ -43,8 +46,16 @@ class Venta(models.Model):
 class DetalleArticulo(models.Model):
     venta = models.ForeignKey(Venta, related_name='detalle_articulos', on_delete=models.CASCADE)
     articulo = models.ForeignKey(Articulo, on_delete=models.CASCADE)
-    cantidad = models.PositiveIntegerField()
+    cantidad = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
     precio_venta_final = models.DecimalField(max_digits=10, decimal_places=2)  # El precio al que realmente se vendió el artículo.
+    operacion = models.ForeignKey(
+        'OperacionVenta', related_name='detalles_articulo',
+        on_delete=models.PROTECT, null=True, blank=True,
+    )
 
     def __str__(self):
         return f"{self.cantidad} de {self.articulo}"
@@ -54,6 +65,32 @@ class DetalleAvance(models.Model):
     venta = models.ForeignKey(Venta, related_name='detalle_avances', on_delete=models.CASCADE)
     avance = models.ForeignKey(Avance, on_delete=models.CASCADE)
     monto = models.DecimalField(max_digits=10, decimal_places=2)  # Monto del avance.
+    operacion = models.ForeignKey(
+        'OperacionVenta', related_name='detalles_avance',
+        on_delete=models.PROTECT, null=True, blank=True,
+    )
 
     def __str__(self):
         return f"Avance de {self.monto} a {self.venta.cosechero}"
+
+
+class OperacionVenta(models.Model):
+    """Un envío idempotente que agrega movimientos a una venta semanal."""
+
+    clave = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    venta = models.ForeignKey(Venta, related_name='operaciones', on_delete=models.PROTECT)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name='operaciones_venta',
+        on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    fecha_movimiento = models.DateField()
+    creada_en = models.DateTimeField(auto_now_add=True)
+    huella_payload = models.CharField(max_length=64)
+    total_movimiento = models.DecimalField(max_digits=10, decimal_places=2)
+    impresion_solicitada = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ('-creada_en',)
+
+    def __str__(self):
+        return f"Operación {self.clave} → venta {self.venta_id}"
