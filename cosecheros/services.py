@@ -11,7 +11,7 @@ utils/reportes.py.
 """
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import F, Sum
 
 from .models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
 
@@ -128,16 +128,42 @@ def calcular_saldos_cosecha(cosecha_id: int) -> list[dict]:
     No filtra por signo: el llamador decide cómo agrupar/mostrar ambos
     lados (ver comando resumen_perdidas_cosecha).
     """
-    cosecha = Cosecha.objects.get(pk=cosecha_id)
+    from ventas.models import DetalleArticulo, DetalleAvance
 
-    cosecheros = Cosechero.objects.filter(
-        entregatabaco__cosecha=cosecha
-    ).distinct()
+    cosecha = Cosecha.objects.get(pk=cosecha_id)
+    precios = obtener_precios(cosecha)
+    entregas = list(
+        EntregaTabaco.objects.filter(cosecha=cosecha)
+        .select_related('cosechero')
+        .order_by('cosechero_id')
+    )
+
+    cosecheros = {}
+    produccion_por_cosechero = {}
+    for entrega in entregas:
+        cosecheros[entrega.cosechero_id] = entrega.cosechero
+        valor = calcular_produccion_entrega(entrega, precios.get(entrega.variedad))['subtotal']
+        produccion_por_cosechero[entrega.cosechero_id] = (
+            produccion_por_cosechero.get(entrega.cosechero_id, Decimal('0')) + valor
+        )
+
+    articulos = {
+        fila['venta__cosechero_id']: fila['total'] or Decimal('0')
+        for fila in DetalleArticulo.objects.filter(venta__cosecha=cosecha)
+        .values('venta__cosechero_id')
+        .annotate(total=Sum(F('cantidad') * F('precio_venta_final')))
+    }
+    avances = {
+        fila['venta__cosechero_id']: fila['total'] or Decimal('0')
+        for fila in DetalleAvance.objects.filter(venta__cosecha=cosecha)
+        .values('venta__cosechero_id')
+        .annotate(total=Sum('avance__monto_pagado'))
+    }
 
     resultados = []
-    for cosechero in cosecheros:
-        produccion = calcular_produccion_total(cosechero, cosecha)
-        gastos = calcular_gastos(cosechero, cosecha)
+    for cosechero_id, cosechero in cosecheros.items():
+        produccion = produccion_por_cosechero.get(cosechero_id, Decimal('0'))
+        gastos = articulos.get(cosechero_id, Decimal('0')) + avances.get(cosechero_id, Decimal('0'))
         resultados.append({
             'cosechero': cosechero,
             'gastos': gastos,

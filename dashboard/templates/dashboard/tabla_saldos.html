@@ -1,0 +1,7 @@
+<section class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
+  <div class="border-b border-slate-800 px-5 py-4"><h2 class="font-semibold text-white">{{ titulo }}</h2></div>
+  <div class="overflow-x-auto"><table class="w-full"><thead class="text-xs uppercase tracking-wider text-slate-500"><tr><th class="px-5 py-3 text-left">Cosechero</th><th class="px-3 py-3 text-right">Gastos</th><th class="px-3 py-3 text-right">Producción</th><th class="px-3 py-3 text-right">Saldo</th><th class="px-5 py-3 text-right">Reporte</th></tr></thead><tbody>
+  {% for fila in filas %}<tr class="border-t border-slate-800/70"><td class="px-5 py-3 text-sm font-medium text-white">{{ fila.cosechero }}</td><td class="px-3 py-3 text-right font-mono text-sm text-slate-400">${{ fila.gastos|floatformat:2 }}</td><td class="px-3 py-3 text-right font-mono text-sm text-slate-400">${{ fila.produccion|floatformat:2 }}</td><td class="px-3 py-3 text-right font-mono text-sm {% if lado == 'deben' %}text-amber-300{% else %}text-blue-300{% endif %}">${{ fila.saldo_mostrar|floatformat:2 }}</td><td class="px-5 py-3 text-right"><a href="{% url 'reporte_cosechero' fila.cosechero.id cosecha.id %}" class="text-sm text-blue-300 hover:text-blue-200">PDF</a></td></tr>
+  {% empty %}<tr><td colspan="5" class="p-8 text-center text-sm text-slate-500">No hay cosecheros en este grupo.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
