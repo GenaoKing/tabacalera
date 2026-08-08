@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base: dark theme global ─── */
+@layer base {
+  [x-cloak] { display: none !important; }
+
+  body {
+    @apply bg-slate-950 text-slate-200 antialiased;
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Scrollbar sutil */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgb(51 65 85 / 0.5); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(71 85 105 / 0.7); }
+
+  /* Inputs y selects heredan dark mode */
+  select, input[type="text"], input[type="number"], input[type="date"],
+  input[type="email"], input[type="password"], textarea {
+    @apply bg-slate-800 border-slate-600 text-white rounded-lg;
+  }
+  select:focus, input:focus, textarea:focus {
+    @apply border-blue-500 ring-1 ring-blue-500;
+  }
+}
+
+/* ─── Components reutilizables ─── */
+@layer components {
+  /* Scoping: .tw resetea dentro de páginas Tailwind
+     para no conflictuar si algún template viejo usa Bootstrap */
+  .tw { color: inherit; }
+
+  .nav-item-link {
+    @apply text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all duration-150;
+  }
+  .nav-item-link.active {
+    @apply text-white bg-slate-800/80;
+  }
+}
+
+/* ─── Animaciones ─── */
+@layer utilities {
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .content-fadein {
+    animation: fadein 0.3s ease-out;
+  }
+}

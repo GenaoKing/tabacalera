@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.db import models
+from django.db.models import F, Sum
 from django.forms import ValidationError
 from cosecheros.models import Cosechero, Cosecha
 from articulo.models import Articulo
@@ -14,11 +17,15 @@ class Venta(models.Model):
     is_active = models.BooleanField(default=True)
 
     def update_total(self):
-        total_articulos = sum([detalle.precio_venta_final * detalle.cantidad for detalle in self.detalle_articulos.all()])
-        total_avances = sum([detalle.monto for detalle in self.detalle_avances.all()])
-        
+        total_articulos = self.detalle_articulos.aggregate(
+            total=Sum(F('cantidad') * F('precio_venta_final'))
+        )['total'] or Decimal('0')
+        total_avances = self.detalle_avances.aggregate(
+            total=Sum('monto')
+        )['total'] or Decimal('0')
+
         self.total = total_articulos + total_avances
-        self.save()
+        self.save(update_fields=['total'])
     
     def clean(self):
         super().clean()

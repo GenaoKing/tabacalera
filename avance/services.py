@@ -4,7 +4,7 @@ Servicio unificado de importación de avances.
 Flujo: parse_file() → preview JSON → import_rows()
 """
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 from pathlib import Path
@@ -14,16 +14,13 @@ import pandas as pd
 from django.db import transaction
 
 from avance.models import Avance
-from cosecheros.models import Cosechero
+from cosecheros.models import Cosechero, Cosecha
 from ventas.models import Venta, DetalleAvance
 
 
 # ─────────────────────────────────────────────
 # Constantes
 # ─────────────────────────────────────────────
-COSECHA_ACTUAL_ID = 10002
-COSECHA_ACTUAL_LABEL = "2025-2026"
-DESCRIPCION_DEFAULT = f"Avance a cosecha {COSECHA_ACTUAL_LABEL}"
 ID_NO_COSECHERO = 30002  # Descargo (cheques que NO son de cosecheros)
 
 # Firmas de columnas para auto-detección de formato
@@ -119,12 +116,16 @@ def parse_fecha_from_filename(fname: str) -> Optional[date]:
         return None
 
 
-def proximo_sabado(d: date) -> date:
-    """Retorna el próximo sábado a partir de la fecha dada (o el mismo día si es sábado)."""
-    dias_para_sabado = (5 - d.weekday()) % 7
-    if dias_para_sabado == 0 and d.weekday() != 5:
-        dias_para_sabado = 7
-    return d if d.weekday() == 5 else date.fromordinal(d.toordinal() + dias_para_sabado)
+def proximo_sabado(fecha_venta: date) -> date:
+    """
+    Retorna el próximo sábado (o el mismo día si es sábado).
+    Idéntica a la función en ventas/views.py para mantener consistencia.
+    Las ventas se computan los sábados — los items se acumulan durante la semana.
+    """
+    dias_hasta_sabado = (5 - fecha_venta.weekday()) % 7  # 5 = sábado
+    if dias_hasta_sabado == 0:
+        return fecha_venta
+    return fecha_venta + timedelta(days=dias_hasta_sabado)
 
 
 # ─────────────────────────────────────────────
@@ -164,14 +165,48 @@ def read_uploaded_file(fileobj) -> pd.DataFrame:
         columns=lambda c: str(c).replace('\ufeff', '').replace('\xa0', ' ').strip(),
         inplace=True
     )
+
+    # Normalizar nombres de columnas comunes (case-insensitive)
+    # Así "No. cuenta", "No. Cuenta", "NO. CUENTA" → "No. Cuenta"
+    COLUMN_ALIASES = {
+        'no. cuenta':       'No. Cuenta',
+        'no. de cuenta':    'No. de cuenta',
+        'no. cheque':       'No. Cheque',
+        'numero':           'Numero',
+        'monto':            'Monto',
+        'fecha':            'Fecha',
+        'tipo':             'Tipo',
+        'id':               'ID',
+        'beneficiario':     'Beneficiario',
+        'descripcion':      'Descripcion',
+        'descripción':      'Descripcion',
+        'cosechero':        'Cosechero',
+    }
+    df.rename(
+        columns=lambda c: COLUMN_ALIASES.get(c.strip().lower(), c),
+        inplace=True
+    )
+
     return df
 
 
 def detect_format(columns: set) -> str:
-    """Detecta el formato del archivo basándose en sus columnas."""
-    for fmt, required in FORMAT_SIGNATURES.items():
-        if required.issubset(columns):
-            return fmt
+    """
+    Detecta el formato del archivo. Prioriza señales explícitas (Tipo, No. Cheque,
+    Beneficiario) sobre genéricas (Numero) para evitar mis-detección.
+    """
+    # 1. Señal MÁS explícita: el usuario declaró el tipo por fila
+    if {'Tipo', 'Monto'}.issubset(columns):
+        return 'unificado'
+    # 2. No. Cheque presente → cheques
+    if {'No. Cheque', 'Monto', 'ID'}.issubset(columns):
+        return 'cheques'
+    # 3. Beneficiario + cuenta → export bancario
+    if {'No. de cuenta', 'Monto', 'Beneficiario'}.issubset(columns):
+        return 'banco_depositos'
+    # 4. Fallback más genérico
+    if {'Numero', 'Monto', 'ID'}.issubset(columns):
+        return 'efectivos'
     return 'desconocido'
 
 
@@ -290,7 +325,7 @@ def _build_row(
         'monto_display': f"{monto:,.2f}" if monto else 'inválido',
         'fecha': fecha.isoformat() if fecha else None,
         'fecha_display': fecha.strftime('%d/%m/%Y') if fecha else 'vacía',
-        'descripcion': descripcion or DESCRIPCION_DEFAULT,
+        'descripcion': descripcion,
         'cuenta': cuenta,
         'status': final_status,
         'status_msg': final_msg,
@@ -305,7 +340,7 @@ def _parse_banco_depositos(df, cosecheros_by_cuenta, fecha_filename):
         cuenta = limpiar_cuenta(row.get('No. de cuenta'))
         monto = limpiar_monto(row.get('Monto'))
         beneficiario = str(row.get('Beneficiario', '')).strip() if pd.notna(row.get('Beneficiario')) else ''
-        descripcion_raw = str(row.get('Descripción', '')).strip() if pd.notna(row.get('Descripción')) else ''
+        descripcion_raw = str(row.get('Descripcion', '')).strip() if pd.notna(row.get('Descripcion')) else ''
 
         # Fecha: del filename o de columna si existe
         if 'Fecha' in df.columns and pd.notna(row.get('Fecha')):
@@ -471,17 +506,36 @@ def _parse_unificado(df, cosecheros_by_id, cosecheros_by_cuenta):
 # PASO 2: Importar filas confirmadas
 # ─────────────────────────────────────────────
 def obtener_venta_existente(cosechero_id: int, fecha_sabado: date) -> Optional[Venta]:
-    """Busca una venta existente para el cosechero en la fecha del sábado."""
-    return Venta.objects.filter(
+    """
+    Busca una venta existente para el cosechero en la semana del sábado.
+    Idéntica a la lógica en ventas/views.py — busca por rango de semana.
+    """
+    inicio_semana = fecha_sabado - timedelta(days=fecha_sabado.weekday())
+    fin_semana = inicio_semana + timedelta(days=6)
+    ventas = Venta.objects.filter(
         cosechero_id=cosechero_id,
-        fecha_venta=fecha_sabado,
-    ).first()
+        fecha_venta__range=(inicio_semana, fin_semana),
+    )
+    return ventas.first() if ventas.exists() else None
 
 
-def import_confirmed_rows(rows: list[dict]) -> dict:
+def get_cosechas_list() -> list[dict]:
+    """Retorna las cosechas disponibles para el selector del frontend.
+    Usa str(cosecha) para el nombre, así funciona sin importar los campos del modelo."""
+    return [
+        {'id': c.id, 'nombre': str(c)}
+        for c in Cosecha.objects.all().order_by('-id')
+    ]
+
+
+def import_confirmed_rows(rows: list[dict], cosecha_id: int, descripcion_default: str) -> dict:
     """
     Importa las filas confirmadas por el usuario.
-    Cada fila debe tener: cosechero_id, tipo_avance, numero, monto, fecha, descripcion
+
+    Args:
+        rows: Filas confirmadas del preview
+        cosecha_id: ID de la cosecha seleccionada por el usuario
+        descripcion_default: Descripción para filas sin descripción (ej: "Avance a cosecha 2025-2026")
     
     Retorna estadísticas de la importación.
     """
@@ -497,38 +551,44 @@ def import_confirmed_rows(rows: list[dict]) -> dict:
 
     for row in rows:
         try:
-            cosechero_id = int(row['cosechero_id'])
+            cosechero_id_row = int(row['cosechero_id'])
             monto = Decimal(str(row['monto']))
             fecha_avance = date.fromisoformat(row['fecha'])
             tipo_avance = row['tipo_avance']
             numero = row.get('numero', '')
-            descripcion = row.get('descripcion', '') or DESCRIPCION_DEFAULT
+            descripcion = row.get('descripcion', '').strip() or descripcion_default
+
+            if tipo_avance not in ('cheque', 'deposito', 'efectivo'):
+                stats['errores'].append(
+                    f"Fila {row.get('index', '?')}: tipo_avance inválido '{tipo_avance}'"
+                )
+                continue
 
             if monto <= 0:
                 stats['errores'].append(f"Fila {row.get('index', '?')}: monto inválido ({monto})")
                 continue
 
             fecha_sabado = proximo_sabado(fecha_avance)
-            key = (cosechero_id, fecha_sabado)
+            key = (cosechero_id_row, fecha_sabado)
 
             with transaction.atomic():
                 # Cosechero
-                c_obj = cosecheros_cache.get(cosechero_id)
+                c_obj = cosecheros_cache.get(cosechero_id_row)
                 if c_obj is None:
-                    c_obj = Cosechero.objects.get(pk=cosechero_id)
-                    cosecheros_cache[cosechero_id] = c_obj
+                    c_obj = Cosechero.objects.get(pk=cosechero_id_row)
+                    cosecheros_cache[cosechero_id_row] = c_obj
 
-                # Venta del sábado
+                # Venta del sábado (reutiliza si existe en la misma semana)
                 venta = ventas_cache.get(key)
                 if venta is None:
-                    venta = obtener_venta_existente(cosechero_id, fecha_sabado)
+                    venta = obtener_venta_existente(cosechero_id_row, fecha_sabado)
                     if venta is None:
                         venta = Venta.objects.create(
                             cosechero=c_obj,
                             fecha_venta=fecha_sabado,
                             impreso=False,
                             total=monto,
-                            cosecha_id=COSECHA_ACTUAL_ID,
+                            cosecha_id=cosecha_id,
                         )
                         stats['ventas_creadas'] += 1
                     else:
@@ -550,7 +610,7 @@ def import_confirmed_rows(rows: list[dict]) -> dict:
                     stats['ventas_actualizadas'] += 1
 
                 # Descripción especial para no-cosechero
-                if cosechero_id == ID_NO_COSECHERO and not descripcion:
+                if cosechero_id_row == ID_NO_COSECHERO and not descripcion:
                     descripcion = "Descargo de cheque"
 
                 # Crear avance

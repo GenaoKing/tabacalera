@@ -1,0 +1,17 @@
+{
+  "name": "tabacalera-genao",
+  "private": true,
+  "scripts": {
+    "dev": "npx tailwindcss -i ./static_src/css/input.css -o ./static/css/tailwind.css --watch",
+    "build": "npx tailwindcss -i ./static_src/css/input.css -o ./static/css/tailwind.css --minify",
+    "setup": "npm install && npm run copy-alpine && npm run build",
+    "copy-alpine": "node -e \"const fs=require('fs'); fs.mkdirSync('./static/js',{recursive:true}); fs.copyFileSync('./node_modules/alpinejs/dist/cdn.min.js','./static/js/alpine.min.js'); console.log('Alpine.js copiado a static/js/');\""
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.7",
+    "tailwindcss": "^3.4.0"
+  },
+  "dependencies": {
+    "alpinejs": "^3.14.0"
+  }
+}

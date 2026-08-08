@@ -1,141 +1,280 @@
 {% extends 'base.html' %}
-
-{% block extra_css %}
-<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.21/css/jquery.dataTables.css">
-<style>
-    .dataTables_wrapper {
-        margin-top: 80px;  /* Ajusta este valor según necesites */
-    }
-</style>
-{% endblock %}
+{% block page_title %}Tickets de Venta{% endblock %}
 
 {% block content %}
-<div class="mt-3">
-<table id="tablaVentas" class="display">
-    <thead>
-        <tr>
-            <th>Cosechero</th>
-            <th>Fecha de Venta</th>
-            <th>Total</th>
-            <th>Acciones</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for venta in ventas %}
-        <tr>
-            <td>{{ venta.cosechero.nombre }} {{ venta.cosechero.apellido }}</td>
-            <td>{{ venta.fecha_venta }}</td>
-            <td>{{ venta.total }}</td>
-            <td>
-                <button data-id="{{ venta.id }}" class="btn btn-info view-details">Ver Detalles</button>
-                <button data-id="{{ venta.id }}" class="btn btn-primary print-ticket">Imprimir</button>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-</div>
+<div x-data="ticketsApp()" class="space-y-6">
 
-<!-- Modal para detalles de ventas -->
-<div class="modal fade" id="detalleVentaModal" tabindex="-1" role="dialog" aria-labelledby="detalleVentaModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="detalleVentaModalLabel">Detalle de Venta</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p>Cosechero: {{ venta.cosechero.nombre }}</p>
-                <p>Fecha de Venta: {{ venta.fecha_venta }}</p>
-                <p>Total: {{ venta.total }}</p>
-                
-                <h5>Artículos Vendidos</h5>
-                <ul>
-                    {% for detalle in detalles %}
-                    <li>{{ detalle.articulo.descripcion }}: {{ detalle.cantidad_total }} a {{ detalle.precio_venta_final }} cada uno.</li>
-                    {% endfor %}
-                </ul>
-
-                <h5>Avances Asociados</h5>
-                <ul>
-                    {% for avance in avances %}
-                    <li>{{ avance.tipo }} numero : {{ avance.numero }} {{ avance.monto_pagado }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
+  {# ── Header + Filtros ── #}
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-white tracking-tight">Tickets</h1>
+      <p class="text-sm text-slate-400 mt-1">Historial de ventas y despachos</p>
     </div>
-</div>
 
+    <div class="flex items-center gap-3">
+      {# Filtro por cosecha #}
+      <select x-model="cosechaFiltro" @change="filtrarPorCosecha()"
+              class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white
+                     focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+        <option value="">Todas las cosechas</option>
+        {% for cosecha in cosechas %}
+          <option value="{{ cosecha.id }}"
+                  {% if cosecha_seleccionada == cosecha.id %}selected{% endif %}>
+            {{ cosecha }}
+          </option>
+        {% endfor %}
+      </select>
+
+      {# Búsqueda #}
+      <div class="relative">
+        <svg class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input type="text" x-model="busqueda" placeholder="Buscar cosechero..."
+               class="bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white
+                      placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition w-56">
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabla de Ventas ── #}
+  <div class="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-800">
+            <th class="text-left px-5 py-3 font-medium">Cosechero</th>
+            <th class="text-left px-3 py-3 font-medium">Cosecha</th>
+            <th class="text-left px-3 py-3 font-medium">Fecha</th>
+            <th class="text-right px-3 py-3 font-medium">Total</th>
+            <th class="text-center px-3 py-3 font-medium">Estado</th>
+            <th class="text-center px-5 py-3 font-medium">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for venta in ventas %}
+          <tr class="border-t border-slate-800/60 hover:bg-slate-800/30 transition"
+              x-show="filtroVisible('{{ venta.cosechero.nombre|lower }} {{ venta.cosechero.apellido|lower }}')">
+            <td class="px-5 py-3">
+              <div class="flex items-center gap-2.5">
+                <span class="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center
+                             text-[10px] font-bold text-slate-400 shrink-0">
+                  {{ venta.cosechero.nombre|first }}{{ venta.cosechero.apellido|first }}
+                </span>
+                <span class="text-sm text-white">
+                  {{ venta.cosechero.nombre }} {{ venta.cosechero.apellido }}
+                </span>
+              </div>
+            </td>
+            <td class="px-3 py-3 text-sm text-slate-400">{{ venta.cosecha }}</td>
+            <td class="px-3 py-3 text-sm text-slate-300 font-mono">{{ venta.fecha_venta|date:"d/m/Y" }}</td>
+            <td class="text-right px-3 py-3 text-sm font-mono text-emerald-400">
+              ${{ venta.total|floatformat:2 }}
+            </td>
+            <td class="text-center px-3 py-3">
+              {% if venta.impreso %}
+                <span class="text-xs bg-emerald-900/40 text-emerald-300 px-2 py-0.5 rounded-full">Impreso</span>
+              {% else %}
+                <span class="text-xs bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded-full">Pendiente</span>
+              {% endif %}
+            </td>
+            <td class="text-center px-5 py-3">
+              <div class="flex items-center justify-center gap-1">
+                <button @click="verDetalles({{ venta.id }})"
+                        class="p-1.5 rounded-md text-slate-400 hover:text-blue-400 hover:bg-blue-900/30 transition"
+                        title="Ver detalles">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                </button>
+                <button @click="imprimir({{ venta.id }})"
+                        class="p-1.5 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-emerald-900/30 transition"
+                        title="Imprimir ticket">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="px-5 py-12 text-center text-sm text-slate-500">
+              No hay ventas registradas
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ══════════════════════════════════════════════
+     MODAL: Detalle de Venta
+  ══════════════════════════════════════════════ #}
+  <div x-show="modalDetalle" x-transition.opacity
+       class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+       @keydown.escape.window="modalDetalle = false">
+
+    <div x-show="modalDetalle" x-transition
+         @click.away="modalDetalle = false"
+         class="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
+
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-slate-900 z-10">
+        <h3 class="text-base font-semibold text-white">
+          Detalle de Venta <span class="text-slate-500" x-text="'#' + detalleVenta.id"></span>
+        </h3>
+        <button @click="modalDetalle = false" class="text-slate-500 hover:text-white transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="px-6 py-5 space-y-5" x-show="!cargandoDetalle">
+        {# Info general #}
+        <div class="grid grid-cols-3 gap-4">
+          <div>
+            <p class="text-xs text-slate-500">Cosechero</p>
+            <p class="text-sm text-white mt-0.5" x-text="detalleVenta.cosechero_nombre"></p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Fecha</p>
+            <p class="text-sm text-white mt-0.5 font-mono" x-text="detalleVenta.fecha_venta"></p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Total</p>
+            <p class="text-sm text-emerald-400 mt-0.5 font-mono font-bold"
+               x-text="'$' + Number(detalleVenta.total || 0).toFixed(2)"></p>
+          </div>
+        </div>
+
+        {# Artículos #}
+        <div x-show="detalleVenta.detalles && detalleVenta.detalles.length > 0">
+          <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Artículos</p>
+          <div class="space-y-1">
+            <template x-for="d in detalleVenta.detalles" :key="d.descripcion">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-800/50">
+                <div>
+                  <span class="text-sm text-white" x-text="d.descripcion"></span>
+                  <span class="text-xs text-slate-500 ml-1" x-text="'x' + d.cantidad_total"></span>
+                </div>
+                <span class="text-sm font-mono text-emerald-400"
+                      x-text="'$' + Number(d.importe_total || (d.cantidad_total * d.precio_venta_final)).toFixed(2)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        {# Avances #}
+        <div x-show="detalleVenta.avances && detalleVenta.avances.length > 0">
+          <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Avances</p>
+          <div class="space-y-1">
+            <template x-for="a in detalleVenta.avances" :key="a.numero">
+              <div class="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-800/50">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium px-1.5 py-0.5 rounded"
+                        :class="{
+                          'bg-blue-900/40 text-blue-300': a.tipo === 'cheque',
+                          'bg-emerald-900/40 text-emerald-300': a.tipo === 'deposito',
+                          'bg-amber-900/40 text-amber-300': a.tipo === 'efectivo'
+                        }" x-text="a.tipo"></span>
+                  <span class="text-sm text-white" x-text="a.descripcion"></span>
+                </div>
+                <span class="text-sm font-mono text-amber-400"
+                      x-text="'$' + Number(a.monto_pagado).toFixed(2)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      {# Loading state #}
+      <div x-show="cargandoDetalle" class="px-6 py-12 text-center">
+        <div class="w-6 h-6 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
+        <p class="text-sm text-slate-500 mt-3">Cargando detalles...</p>
+      </div>
+    </div>
+  </div>
+
+</div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"></script>
-<script src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.js"></script>
-
 <script>
-$(document).ready(function() {
-    $('#tablaVentas').DataTable();  // Inicializa DataTables
+function ticketsApp() {
+  return {
+    busqueda: '',
+    cosechaFiltro: '{{ cosecha_seleccionada|default:"" }}',
+    modalDetalle: false,
+    cargandoDetalle: false,
+    detalleVenta: {},
 
-    // Manejar clic en botones 'Ver Detalles'
-    $('#tablaVentas').on('click', '.view-details', function() {
-        var ventaId = $(this).data('id');  // Obtén el ID de la venta desde el atributo data-id del botón
+    filtroVisible(nombre) {
+      if (!this.busqueda) return true;
+      return nombre.includes(this.busqueda.toLowerCase());
+    },
 
-        // Hacer la solicitud AJAX
-        $.ajax({
-            url: '{% url "detalles_venta" 0 %}'.replace('0', ventaId),  // Construye la URL para la solicitud
-            type: 'GET',
-            dataType: 'json',
-            success: function(data) {
-                // Si la solicitud es exitosa, carga los datos en el modal
-                $('#detalleVentaModalLabel').html('Detalle de Venta #' + ventaId);
-                $('.modal-body').html(crearContenidoModal(data));
-                $('#detalleVentaModal').modal('show');  // Muestra el modal
-            },
-            error: function(error) {
-                console.log('Error al cargar los detalles:', error);
-            }
+    filtrarPorCosecha() {
+      const params = new URLSearchParams(window.location.search);
+      if (this.cosechaFiltro) {
+        params.set('cosecha', this.cosechaFiltro);
+      } else {
+        params.delete('cosecha');
+      }
+      window.location.search = params.toString();
+    },
+
+    async verDetalles(ventaId) {
+      this.modalDetalle = true;
+      this.cargandoDetalle = true;
+      this.detalleVenta = { id: ventaId };
+
+      try {
+        const url = `{% url 'detalles_venta' 0 %}`.replace('0', ventaId);
+        const resp = await fetch(url, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
-    });
+        if (resp.ok) {
+          this.detalleVenta = { id: ventaId, ...await resp.json() };
+        }
+      } catch (e) {
+        console.error('Error cargando detalles:', e);
+      } finally {
+        this.cargandoDetalle = false;
+      }
+    },
 
-    // Función para crear el contenido del modal con los datos de la venta
-    function crearContenidoModal(data) {
-        var contenido = '<p>Cosechero: ' + data.cosechero_nombre + '</p>' +
-                        '<p>Fecha de Venta: ' + data.fecha_venta + '</p>' +
-                        '<p>Total: ' + data.total + '</p><h5>Artículos Vendidos</h5><ul>';
-
-        data.detalles.forEach(function(detalle) {
-            contenido += '<li>' + detalle.descripcion + ': ' + detalle.cantidad_total +
-                        ' a $' + detalle.precio_venta_final.toFixed(2) + ' cada uno.</li>';
+    async imprimir(ventaId) {
+      try {
+        const url = `{% url 'view_imprimir' 0 %}`.replace('0', ventaId);
+        const resp = await fetch(url, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
+        const data = await resp.json();
 
-        contenido += '</ul><h5>Avances Asociados</h5><ul>';
-        data.avances.forEach(function(avance) {
-            contenido += '<li>' + avance.tipo +' '+ avance.numero +': ' + avance.descripcion + ': $' + avance.monto_pagado.toFixed(2) + '</li>';
-        });
-        contenido += '</ul>';
-
-        return contenido;
-    }
-});
-
-$(document).ready(function() {
-    $('#tablaVentas').on('click', '.print-ticket', function() {
-        var ventaId = $(this).data('id');
-        $.ajax({
-            url: '{% url "view_imprimir" 0 %}'.replace('0', ventaId),
-            type: 'GET',
-            success: function(response) {
-                alert('Impresión realizada correctamente.');
-            },
-            error: function() {
-                alert('Error al imprimir.');
-            }
-        });
-    });
-});
+        if (data.success) {
+          // Actualizar estado visual
+          const badge = event.target.closest('tr')?.querySelector('[class*="bg-amber"]');
+          if (badge) {
+            badge.textContent = 'Impreso';
+            badge.className = badge.className
+              .replace('bg-amber-900/40', 'bg-emerald-900/40')
+              .replace('text-amber-300', 'text-emerald-300');
+          }
+        } else {
+          alert(data.message || 'Error al imprimir');
+        }
+      } catch (e) {
+        alert('Error de conexión al imprimir');
+        console.error(e);
+      }
+    },
+  };
+}
 </script>
 {% endblock %}

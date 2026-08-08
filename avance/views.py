@@ -11,14 +11,16 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 
 from .forms import FileUploadForm
-from .services import parse_file_for_preview, import_confirmed_rows
+from .services import parse_file_for_preview, import_confirmed_rows, get_cosechas_list
 
 
 @login_required
 def upload_view(request):
     """Renderiza la página de importación de avances."""
+    cosechas = get_cosechas_list()
     return render(request, 'upload.html', {
         'form': FileUploadForm(),
+        'cosechas_json': json.dumps(cosechas),
     })
 
 
@@ -29,7 +31,6 @@ def parse_file_view(request):
     AJAX: Recibe el archivo, lo parsea y retorna el preview JSON.
     No importa nada todavía — solo parsea y valida.
     """
-    form = FileUploadForm(request.POST, request.FILES)
     files = request.FILES.getlist('files')
 
     if not files:
@@ -38,7 +39,6 @@ def parse_file_view(request):
             'error': 'Seleccione al menos un archivo.'
         }, status=400)
 
-    # Procesar el primer archivo (podríamos soportar múltiples en el futuro)
     f = files[0]
 
     try:
@@ -64,11 +64,13 @@ def parse_file_view(request):
 def import_rows_view(request):
     """
     AJAX: Recibe las filas confirmadas por el usuario y las importa.
-    Espera JSON con { rows: [...] }
+    Espera JSON con { rows: [...], cosecha_id: int, descripcion_default: str }
     """
     try:
         body = json.loads(request.body)
         rows = body.get('rows', [])
+        cosecha_id = body.get('cosecha_id')
+        descripcion_default = body.get('descripcion_default', 'Avance a cosecha')
 
         if not rows:
             return JsonResponse({
@@ -76,7 +78,13 @@ def import_rows_view(request):
                 'error': 'No se recibieron filas para importar.',
             }, status=400)
 
-        # Validar que todas las filas tengan cosechero_id
+        if not cosecha_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Debe seleccionar una cosecha.',
+            }, status=400)
+
+        # Validar que todas las filas tengan datos mínimos
         for i, row in enumerate(rows):
             if not row.get('cosechero_id'):
                 return JsonResponse({
@@ -94,7 +102,11 @@ def import_rows_view(request):
                     'error': f'Fila {row.get("index", i)}: falta monto.',
                 }, status=400)
 
-        stats = import_confirmed_rows(rows)
+        stats = import_confirmed_rows(
+            rows=rows,
+            cosecha_id=int(cosecha_id),
+            descripcion_default=descripcion_default,
+        )
 
         return JsonResponse({
             'success': True,

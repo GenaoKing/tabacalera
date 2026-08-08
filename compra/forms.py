@@ -14,6 +14,16 @@ class CompraForm(forms.ModelForm):
             'factura': forms.TextInput(),
             'NFC': forms.TextInput(),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        clases = (
+            'block w-full rounded-lg border border-slate-700 bg-slate-950 '
+            'px-3 py-2.5 text-sm text-white placeholder-slate-500 '
+            'focus:border-tobacco-500 focus:ring-1 focus:ring-tobacco-500'
+        )
+        for field in self.fields.values():
+            field.widget.attrs['class'] = clases
    
 
 

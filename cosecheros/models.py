@@ -87,3 +87,28 @@ class EntregaTabaco(models.Model):
     criollo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
 
+class PrecioVariedadCosecha(models.Model):
+    """
+    Precio pagado por libra/unidad de tabaco, por variedad y clasificación,
+    fijado para una cosecha específica. Da historial: cada temporada puede
+    tener sus propios precios sin afectar reportes de cosechas anteriores.
+    """
+    cosecha = models.ForeignKey(Cosecha, on_delete=models.CASCADE, related_name='precios')
+    variedad = models.CharField(max_length=20, choices=EntregaTabaco.VARIEDADES_CHOICES)
+    precio_centro_largo = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    precio_centro_corto = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    precio_uno_medio = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    precio_libre_pie = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    precio_picadura = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    precio_rezago = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    precio_criollo = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        unique_together = ('cosecha', 'variedad')
+        verbose_name = 'Precio de variedad por cosecha'
+        verbose_name_plural = 'Precios de variedad por cosecha'
+
+    def __str__(self):
+        return f"{self.variedad} — {self.cosecha}"
+
+

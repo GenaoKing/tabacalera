@@ -1,8 +1,24 @@
 import decimal
+from decimal import Decimal
+
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render, get_object_or_404
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST
+from urllib.parse import urlencode
+
 from cosecheros.forms import EntregaTabacoForm
-from cosecheros.models import Cosecha, Cosechero, EntregaTabaco
+from cosecheros.models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
+from cosecheros.services import (
+    CLASIFICACIONES,
+    calcular_produccion_entrega,
+    clonar_precios,
+    obtener_precios,
+)
 
 # Create your views here.
 
@@ -13,7 +29,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from ventas.models import Venta, DetalleArticulo, DetalleAvance
-from ventas.views import procesar_detalles_articulos
+from ventas.services import obtener_detalles_venta, procesar_detalles_articulos
 from reportlab.lib import pagesizes
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -54,67 +70,47 @@ def pie_pagina(canvas, doc):
     canvas.drawString(inch, 0.75 * inch, f"Página {doc.page}")
 
 
-def aplicar_tara(cantidad, clasificacion):
-    parte_entera = int(cantidad)
-    parte_decimal = cantidad - parte_entera
-    if clasificacion in ['Centro Largo', 'Centro Corto', 'Uno y Medio', 'Libre Pie']:
-        parte_decimal *= decimal.Decimal(1.80)
-    elif clasificacion in ['Criollo', 'Rezago', 'Picadura']:
-        parte_decimal *= decimal.Decimal(1.60)
-    return parte_entera + parte_decimal
-
-
-
-def generar_tablas_entregas(cosechero, entregas, styles, usable_width):
+def generar_tablas_entregas(cosechero, entregas, styles, usable_width, precios):
+    """
+    precios: dict {variedad: PrecioVariedadCosecha} de la cosecha, obtenido
+    con cosecheros.services.obtener_precios() — una sola query para todo
+    el reporte en vez de una tabla hardcodeada.
+    """
     story = []
-    total = 0
+    total = decimal.Decimal('0')
 
     # Agrupar entregas por variedad
     entregas_agrupadas = {}
     for entrega in entregas:
-        if entrega.variedad not in entregas_agrupadas:
-            entregas_agrupadas[entrega.variedad] = []
-        entregas_agrupadas[entrega.variedad].append(entrega)
+        entregas_agrupadas.setdefault(entrega.variedad, []).append(entrega)
 
     # Iterar sobre cada variedad y sus entregas
     for variedad, entregas_variedad in entregas_agrupadas.items():
         story.append(Spacer(1, 12))
         story.append(Paragraph(f'Entregas de Tabaco - {variedad}', styles['Heading2']))
 
+        precio_variedad = precios.get(variedad)
+        if precio_variedad is None:
+            story.append(Paragraph(
+                f'⚠ No hay precios cargados para "{variedad}" en esta cosecha. '
+                'Estas entregas no se valoraron (ir a Precios para completarlos).',
+                styles['Normal']
+            ))
+
         for entrega in entregas_variedad:
             story.append(Paragraph(f'{variedad} - {entrega.fecha_entrega.strftime("%d/%m/%Y")}', styles['Normal']))
+            resultado = calcular_produccion_entrega(entrega, precio_variedad)
             data_entrega = [['Clasificación', 'Cantidad', 'Precio', 'Subtotal']]
-            subtotal_entrega = 0
 
-            clasificaciones = [
-                ('Centro Largo', entrega.centro_largo),
-                ('Centro Corto', entrega.centro_corto),
-                ('Uno y Medio', entrega.uno_medio),
-                ('Libre Pie', entrega.libre_pie),
-                ('Picadura', entrega.picadura),
-                ('Rezago', entrega.rezago),
-                ('Criollo', entrega.criollo),
-            ]
+            for linea in resultado['lineas']:
+                data_entrega.append([
+                    linea['clasificacion'],
+                    f"{linea['cantidad_tara']:,.2f}",
+                    f"${linea['precio']:,.2f}",
+                    f"${linea['importe']:,.2f}",
+                ])
 
-            precios = {
-                'Corojo Original': [12000, 12000, 9000, 4000, 3000, 3000, 2500],
-                'Corojo 99': [12000, 12000, 9000, 4500, 3000, 3000, 2500],
-                'Habano 92': [12000, 12000, 9000, 4500, 3000, 3000, 2500],
-                'Criollo 98': [12000, 12000, 9000, 4500, 3000, 3000, 2500],
-                'Piloto Mejorado': [12000, 12000, 9000, 4500, 3000, 3000, 2500],
-                'HVA': [12000, 12000, 9000, 4500, 3000, 3000, 2500],
-            }
-
-            precios_variedad = precios[variedad]
-
-            for (clasificacion, cantidad), precio in zip(clasificaciones, precios_variedad):
-                if cantidad > 0:
-                    cantidad_tara = aplicar_tara(cantidad, clasificacion)
-                    subtotal = cantidad_tara * precio
-                    subtotal_entrega += subtotal
-                    data_entrega.append([clasificacion, f"{cantidad_tara:,.2f}", f"${precio:,.2f}", f"${subtotal:,.2f}"])
-
-            data_entrega.append(['Subtotal', '', '', f"${subtotal_entrega:,.2f}"])
+            data_entrega.append(['Subtotal', '', '', f"${resultado['subtotal']:,.2f}"])
 
             tabla_entrega = Table(data_entrega, colWidths=[usable_width * 0.3, usable_width * 0.2, usable_width * 0.2, usable_width * 0.3])
             tabla_entrega.setStyle(TableStyle([
@@ -127,21 +123,20 @@ def generar_tablas_entregas(cosechero, entregas, styles, usable_width):
             ]))
 
             story.append(tabla_entrega)
-            total += subtotal_entrega  # Acumular el total de las entregas
+            total += resultado['subtotal']  # Acumular el total de las entregas
 
-    return total,story
+    return total, story
 
 
+@login_required
 def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
-    cosechero = Cosechero.objects.get(pk=cosechero_id)
+    cosechero = get_object_or_404(Cosechero, pk=cosechero_id, is_active=True)
     cosecha = get_object_or_404(Cosecha, pk=cosecha_id)
-    
-    print(request.POST)
+
     ventas = Venta.objects.filter(cosechero_id=cosechero_id, cosecha=cosecha)
     detalles_articulos = DetalleArticulo.objects.filter(venta__in=ventas).select_related('articulo').order_by('articulo__descripcion')
 
     articulos_agrupados = procesar_detalles_articulos(detalles_articulos)
-    
 
     # Crear un archivo PDF en memoria
     buffer = io.BytesIO()
@@ -181,7 +176,7 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     data = [['Artículo', 'Presentación', 'Cantidad', 'Precio', 'Importe']]
 
     # Añadir filas a la tabla basadas en los artículos agrupados
-    subtotal_articulos = 0
+    subtotal_articulos = decimal.Decimal('0')
     articulos_ordenados = sorted(articulos_agrupados, key=lambda x: x['descripcion'])
     for articulo in articulos_ordenados:
         data.append([
@@ -191,7 +186,7 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
             f"${articulo['precio_venta_final']:.2f}",
             f"${articulo['importe_total']:,.2f}"
         ])
-        subtotal_articulos+=articulo['importe_total']
+        subtotal_articulos += decimal.Decimal(str(articulo['importe_total']))
 
     # Crear la tabla con los datos
     #data_ordenada = sorted(data, key=lambda x: x[0])
@@ -212,7 +207,7 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
 
 # Preparar los datos para la tabla de avances
 
-    subtotal_avances = 0
+    subtotal_avances = decimal.Decimal('0')
     data_avances = [['Tipo','Numero', 'Descripción', 'Fecha', 'Monto']]
     for avance in avances:
         data_avances.append([
@@ -240,15 +235,14 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     #story.append(Spacer(1, 12))
 
     entregas = EntregaTabaco.objects.filter(cosechero=cosechero,cosecha=cosecha).order_by('fecha_entrega')
-    subtotal_entregas = decimal.Decimal(0.0)
-    if len(entregas) > 0:
-
-        subtotal_entregas,story_entregas=generar_tablas_entregas(cosechero,entregas, styles, usable_width)
+    subtotal_entregas = decimal.Decimal('0')
+    if entregas.exists():
+        precios = obtener_precios(cosecha)
+        subtotal_entregas, story_entregas = generar_tablas_entregas(cosechero, entregas, styles, usable_width, precios)
         story.extend(story_entregas)
-   
 
-    total_gasto = float(subtotal_articulos) + float(subtotal_avances)
-    total = decimal.Decimal(total_gasto) - subtotal_entregas
+    total_gasto = subtotal_articulos + subtotal_avances
+    total = total_gasto - subtotal_entregas
     resumen_data = [
         ['Subtotal Artículos:', f"${subtotal_articulos:,.2f}"],
         ['Subtotal Avances:', f"${subtotal_avances:,.2f}"],
@@ -291,36 +285,153 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     return FileResponse(buffer, as_attachment=True, filename='reporte_cosechero_'+cosechero.__str__()+'_'+cosecha.__str__()+'.pdf')
 
 
+@login_required
+@require_GET
 def show_cosechero(request, id):
     try:
         cosechero_data = Cosechero.objects.values().get(id=id)
         return JsonResponse(cosechero_data)
     except Cosechero.DoesNotExist:
         raise Http404("Cosechero no encontrado")
-    
-def index(request):
-    form = EntregaTabacoForm(request.POST or None)
-    cosecheros = Cosechero.objects.all()
-    cosechas = Cosecha.objects.all().order_by('-fecha_inicio')
-    cosecha_default = cosechas.first()  # Select the most recent harvest
-    initial = {'cosecha': cosecha_default.id} if cosecha_default else {}
-    form = EntregaTabacoForm(initial=initial)
-    return render(request, "index.html", {'cosecheros': cosecheros, 'cosechas': cosechas, 'cosecha_default': cosecha_default, 'form': form,})
 
-def agregar_entrega_tabaco(request, cosechero_id):
-    cosechero = get_object_or_404(Cosechero, pk=cosechero_id)
-    if request.method == 'POST':
-        form = EntregaTabacoForm(request.POST)
-        if form.is_valid():
-            entrega = form.save(commit=False)
-            entrega.cosechero = cosechero
-            entrega.save()
-            return redirect('cosecheros')  # Cambia 'index' por el nombre correcto de tu vista de listado de cosecheros
+
+def _contexto_listado(request, form=None, modal_cosechero=None):
+    """Construye el listado paginado y conserva los filtros de la pantalla."""
+    cosechas = Cosecha.objects.all().order_by('-fecha_inicio')
+    cosecha_default = cosechas.first()
+    cosecha_id = request.GET.get('cosecha')
+
+    if cosecha_id:
+        cosecha_seleccionada = cosechas.filter(pk=cosecha_id).first()
     else:
-        form = EntregaTabacoForm()
-        cosecheros = Cosechero.objects.all()
-        cosechas = Cosecha.objects.all().order_by('-fecha_inicio')
-        cosecha_default = cosechas.first()  # Select the most recent harvest
-        initial = {'cosecha': cosecha_default.id} if cosecha_default else {}
+        cosecha_seleccionada = cosecha_default
+
+    busqueda = request.GET.get('q', '').strip()
+    cosecheros = Cosechero.objects.filter(is_active=True).order_by('nombre', 'apellido')
+    if busqueda:
+        cosecheros = cosecheros.filter(
+            Q(nombre__icontains=busqueda)
+            | Q(apellido__icontains=busqueda)
+            | Q(cedula__icontains=busqueda)
+            | Q(telefono__icontains=busqueda)
+        )
+
+    page_obj = Paginator(cosecheros, 25).get_page(request.GET.get('page'))
+
+    if form is None:
+        initial = {'cosecha': cosecha_seleccionada.id} if cosecha_seleccionada else {}
         form = EntregaTabacoForm(initial=initial)
-        return render(request, "index.html", {'cosecheros': cosecheros, 'cosechas': cosechas, 'cosecha_default': cosecha_default, 'form': form,})
+
+    return {
+        'form': form,
+        'page_obj': page_obj,
+        'cosecheros': page_obj.object_list,
+        'cosechas': cosechas,
+        'cosecha_default': cosecha_default,
+        'cosecha_seleccionada': cosecha_seleccionada,
+        'busqueda': busqueda,
+        'modal_cosechero': modal_cosechero,
+    }
+
+
+@login_required
+@require_GET
+def index(request):
+    return render(request, 'index.html', _contexto_listado(request))
+
+
+@login_required
+@require_POST
+def agregar_entrega_tabaco(request, cosechero_id):
+    cosechero = get_object_or_404(Cosechero, pk=cosechero_id, is_active=True)
+    form = EntregaTabacoForm(request.POST)
+
+    if form.is_valid():
+        entrega = form.save(commit=False)
+        entrega.cosechero = cosechero
+        entrega.save()
+        messages.success(
+            request,
+            f'Entrega registrada correctamente para {cosechero}.',
+        )
+        filtros = {
+            key: request.GET.get(key)
+            for key in ('q', 'page', 'cosecha')
+            if request.GET.get(key)
+        }
+        destino = reverse('cosecheros')
+        if filtros:
+            destino = f'{destino}?{urlencode(filtros)}'
+        return redirect(destino)
+
+    messages.error(request, 'Revise los campos marcados en la entrega.')
+    contexto = _contexto_listado(request, form=form, modal_cosechero=cosechero)
+    return render(request, 'index.html', contexto, status=400)
+
+
+# ─────────────────────────────────────────────
+# Gestión de precios por variedad/cosecha
+# ─────────────────────────────────────────────
+
+@login_required
+def gestionar_precios(request):
+    """
+    Hoja de precios (formato ancho: 1 fila por variedad, 7 columnas de
+    clasificación) para la cosecha seleccionada. Reemplaza la tabla de
+    precios hardcodeada que antes vivía en el código del reporte.
+    """
+    cosechas = Cosecha.objects.all().order_by('-fecha_inicio')
+    cosecha_id = request.POST.get('cosecha') or request.GET.get('cosecha')
+    cosecha_actual = get_object_or_404(Cosecha, pk=cosecha_id) if cosecha_id else cosechas.first()
+
+    if request.method == 'POST' and cosecha_actual is not None:
+        accion = request.POST.get('accion', 'guardar')
+
+        if accion == 'clonar':
+            origen_id = request.POST.get('origen_cosecha')
+            if origen_id:
+                origen = get_object_or_404(Cosecha, pk=origen_id)
+                creadas = clonar_precios(origen, cosecha_actual)
+                if creadas:
+                    messages.success(request, f'Se copiaron {creadas} precio(s) desde "{origen}".')
+                else:
+                    messages.info(
+                        request,
+                        f'"{cosecha_actual}" ya tenía todos los precios de "{origen}" '
+                        '(no se sobreescribió nada).'
+                    )
+        else:
+            # Guardar: recorre las variedades en el mismo orden fijo con el
+            # que se renderizaron (EntregaTabaco.VARIEDADES_CHOICES), sin
+            # depender de campos ocultos que el navegador pudiera alterar.
+            for idx, (variedad_code, _) in enumerate(EntregaTabaco.VARIEDADES_CHOICES):
+                valores = {}
+                for _, _, campo, _ in CLASIFICACIONES:
+                    valor = request.POST.get(f'precio-{idx}-{campo}', '').strip()
+                    valores[campo] = Decimal(valor) if valor else Decimal('0')
+                PrecioVariedadCosecha.objects.update_or_create(
+                    cosecha=cosecha_actual, variedad=variedad_code, defaults=valores
+                )
+            messages.success(request, f'Precios de "{cosecha_actual}" guardados.')
+
+        return redirect(f"{reverse('precios')}?cosecha={cosecha_actual.id}")
+
+    precios_map = obtener_precios(cosecha_actual) if cosecha_actual else {}
+    columnas = [etiqueta for etiqueta, _, _, _ in CLASIFICACIONES]
+
+    filas = []
+    for variedad_code, variedad_label in EntregaTabaco.VARIEDADES_CHOICES:
+        precio = precios_map.get(variedad_code)
+        valores = [
+            (campo, getattr(precio, campo) if precio else Decimal('0'))
+            for _, _, campo, _ in CLASIFICACIONES
+        ]
+        filas.append({'variedad': variedad_code, 'etiqueta': variedad_label, 'valores': valores})
+
+    context = {
+        'cosechas': cosechas,
+        'cosecha_actual': cosecha_actual,
+        'columnas': columnas,
+        'filas': filas,
+    }
+    return render(request, 'precios.html', context)

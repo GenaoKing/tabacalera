@@ -48,7 +48,6 @@ INSTALLED_APPS = [
 
 ]
 
-
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Middleware de WhiteNoise
@@ -59,6 +58,13 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# Herramienta de desarrollo para medir queries por request (Fase 0 del plan de mejora).
+# Nunca se activa si DEBUG está apagado.
+if DEBUG:
+    INSTALLED_APPS += ["debug_toolbar"]
+    MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]
+    INTERNAL_IPS = ["127.0.0.1"]
 
 ROOT_URLCONF = "app.urls"
 
@@ -79,6 +85,10 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "app.wsgi.application"
+
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "dashboard"
+LOGOUT_REDIRECT_URL = "login"
 
 
 # Database
@@ -139,6 +149,8 @@ STATIC_URL = "/static/"
 
 # Carpeta destino de collectstatic (lo que WhiteNoise servirá)
 STATIC_ROOT = r"C:\tabacalera\staticfiles"
+
+STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # Storage recomendado (gzip + hash en nombres)
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
