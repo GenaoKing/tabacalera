@@ -30,6 +30,29 @@
     <div class="rounded-xl border border-emerald-700/30 bg-emerald-950/20 p-5"><p class="text-xs uppercase tracking-wider text-emerald-300/70">Balance neto</p><p class="mt-2 font-mono text-2xl font-bold text-emerald-300">${{ balance_neto|floatformat:2 }}</p><p class="mt-1 text-xs text-slate-500">Gastos menos producción</p></div>
   </div>
 
+  <div class="grid gap-4 md:grid-cols-2">
+    <div class="rounded-xl border border-violet-700/30 bg-violet-950/20 p-5">
+      <p class="text-xs uppercase tracking-wider text-violet-300/70">Gasto promedio por tarea</p>
+      {% if gasto_promedio_tarea is not None %}
+      <p class="mt-2 font-mono text-2xl font-bold text-violet-300">${{ gasto_promedio_tarea|floatformat:2 }}</p>
+      <p class="mt-1 text-xs text-slate-500">Gastos totales entre {{ total_tareas|floatformat:2 }} tareas registradas en las fichas del universo</p>
+      {% else %}
+      <p class="mt-2 text-lg font-semibold text-slate-400">Sin datos de terreno</p>
+      <p class="mt-1 text-xs text-slate-500">Registre las tareas sembradas para calcular este indicador.</p>
+      {% endif %}
+    </div>
+    <div class="rounded-xl border border-cyan-700/30 bg-cyan-950/20 p-5">
+      <p class="text-xs uppercase tracking-wider text-cyan-300/70">Producción promedio por tarea</p>
+      {% if produccion_promedio_tarea is not None %}
+      <p class="mt-2 font-mono text-2xl font-bold text-cyan-300">${{ produccion_promedio_tarea|floatformat:2 }}</p>
+      <p class="mt-1 text-xs text-slate-500">Producción valorizada entre {{ total_tareas|floatformat:2 }} tareas registradas en las fichas del universo</p>
+      {% else %}
+      <p class="mt-2 text-lg font-semibold text-slate-400">Sin datos de terreno</p>
+      <p class="mt-1 text-xs text-slate-500">Registre las tareas sembradas para calcular este indicador.</p>
+      {% endif %}
+    </div>
+  </div>
+
   {% if solo_sin_produccion %}<div class="flex items-center justify-between rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-300"><span>Filtro activo: sin producción entregada</span><a href="?cosecha={{ cosecha.id }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-blue-300">Quitar filtro</a></div>{% endif %}
 
   {% include 'dashboard/tabla_saldos.html' with titulo='Nos deben' filas=nos_deben lado='deben' %}

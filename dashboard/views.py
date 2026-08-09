@@ -17,6 +17,22 @@ def dashboard(request):
     sin_produccion = [fila for fila in saldos_completos if fila['sin_produccion_entregada']]
     total_sin_produccion = sum((fila['gastos'] for fila in sin_produccion), Decimal('0'))
     cuentas_sin_precio = [fila for fila in saldos_completos if fila['entregas_sin_precio'] > 0]
+    total_tareas = sum(
+        (fila['cosechero'].terreno_sembrado for fila in saldos_completos),
+        Decimal('0'),
+    )
+    total_gastos_cosecha = sum(
+        (fila['gastos'] for fila in saldos_completos), Decimal('0'),
+    )
+    total_produccion_cosecha = sum(
+        (fila['produccion'] for fila in saldos_completos), Decimal('0'),
+    )
+    gasto_promedio_tarea = (
+        total_gastos_cosecha / total_tareas if total_tareas > 0 else None
+    )
+    produccion_promedio_tarea = (
+        total_produccion_cosecha / total_tareas if total_tareas > 0 else None
+    )
 
     saldos = saldos_completos
     q = request.GET.get('q', '').strip().lower()
@@ -49,6 +65,9 @@ def dashboard(request):
         'sin_produccion': sin_produccion,
         'total_sin_produccion': total_sin_produccion,
         'cuentas_sin_precio': cuentas_sin_precio,
+        'total_tareas': total_tareas,
+        'gasto_promedio_tarea': gasto_promedio_tarea,
+        'produccion_promedio_tarea': produccion_promedio_tarea,
     }
     return render(request, 'dashboard/dashboard.html', context)
 
