@@ -66,6 +66,7 @@ El flujo implementado actualmente es:
   - `tailwind.config.js`: escanea `./*/templates/**/*.html` + `./app/templates/**/*.html`; paleta custom `tobacco` (marrón/naranja); fuentes DM Sans (display/body) + JetBrains Mono; plugin `@tailwindcss/forms`. **No hay `dark:` variant configurado** — el tema oscuro está hardcodeado con clases `bg-slate-900/950`, no hay modo claro.
 - **Impresión**: el guardado responde primero y un POST independiente intenta imprimir el ticket semanal completo vía `escpos.printer.Usb`; una falla USB no revierte la venta.
 - **Reportes**: PDFs de cosechero generados con ReportLab (`cosecheros/views.py` arma el documento; toda la lógica de cálculo —tara, precios, saldos— vive en `cosecheros/services.py`, única fuente de verdad; `cosecheros/utils/reportes.py` ya no existe, se consolidó ahí).
+- **Identidad visual**: el logo corporativo canónico vive en `static/img/tabacalera-genao-logo.png`. Portal, login, favicon y Django Admin lo cargan con `{% static %}`; PDF y ticket térmico resuelven la misma imagen mediante `app.branding.get_brand_logo_path()`, sin depender del directorio desde donde se inicie Django.
 
 ## 3. Mapa de apps
 

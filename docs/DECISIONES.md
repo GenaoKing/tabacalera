@@ -55,3 +55,10 @@
 - Todas las pantallas operativas requieren autenticación.
 - Django Admin queda como soporte técnico; los CRUD Tailwind son la interfaz diaria.
 - No se crean roles adicionales hasta que la operación real demuestre la necesidad de separar permisos.
+
+## Identidad visual
+
+- `static/img/tabacalera-genao-logo.png` es la única fuente canónica del logo corporativo.
+- El logo se usa en sidebar, login, favicon, Django Admin, PDF individual y ticket térmico.
+- Las salidas del servidor no deben abrir `logo.png` mediante una ruta relativa; deben usar `app.branding.get_brand_logo_path()`.
+- El login y el resto del portal mantienen los recursos visuales locales, sin cargar fuentes ni imágenes externas.

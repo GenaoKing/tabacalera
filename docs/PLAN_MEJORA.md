@@ -16,6 +16,21 @@
 | Hardening | Completada en código | `fc2e197`, entorno, zona horaria, favicon, recursos locales; smoke autenticado correcto, pendiente impresora física |
 | Universo financiero completo | Completada | `e22cb74`, unión de entregas y ventas, actividad operativa, flujo `Decimal`, incidencias y consultas constantes |
 | Indicadores por tarea y cosechero | Completada | `65394a2`, bloque individual con gasto, producción y quintales por tarea; protección sin terreno y CSV/PDF ampliados |
+| Identidad visual corporativa | Completada | `4e53cb2`, logo canónico en portal, login, favicon, Admin, PDF y ticket; rutas server-side centralizadas |
+
+## Fase 10 — Identidad visual corporativa
+
+- [x] Identificar el logo corporativo correcto y confirmar que las copias históricas eran idénticas.
+- [x] Centralizar el PNG en `static/img/tabacalera-genao-logo.png` y eliminar duplicados sin uso.
+- [x] Sustituir los iconos genéricos por el logo en sidebar, login y favicon.
+- [x] Personalizar la cabecera de Django Admin con la misma marca.
+- [x] Hacer que PDF y ticket térmico resuelvan el logo mediante Django Staticfiles.
+- [x] Eliminar la dependencia externa de Google Fonts que permanecía en el login.
+- [x] Añadir pruebas de disponibilidad y renderizado de la marca.
+
+No requiere migración ni modifica datos operativos.
+
+**Validación**: commit `4e53cb2`; 23 pruebas aprobadas, `manage.py check` limpio, ninguna migración pendiente, Tailwind y estáticos recompilados.
 
 ## Fase 9 — Indicadores por tarea y cosechero
 

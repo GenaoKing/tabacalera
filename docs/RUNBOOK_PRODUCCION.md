@@ -42,6 +42,7 @@
    ```
 
 7. Iniciar el portal y hacer smoke test autenticado de Dashboard, Ventas, Tickets, Cosecheros, Artículos y Proveedores.
+   Confirmar además que `/static/img/tabacalera-genao-logo.png` responde y aparece en login, sidebar y Admin; generar un PDF para validar el uso server-side.
 8. Registrar una operación controlada con cantidad decimal y comprobar inventario, ticket semanal y PDF.
 9. Probar la impresora térmica USB real. Una falla debe devolver `503` y dejar la venta guardada y pendiente.
 
