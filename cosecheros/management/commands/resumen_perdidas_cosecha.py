@@ -34,12 +34,20 @@ class Command(BaseCommand):
 
         def imprimir_grupo(titulo, filas):
             self.stdout.write(self.style.SUCCESS(f"\n{titulo}"))
-            self.stdout.write(f"{'Cosechero':35} {'Gastos':>15} {'Producción':>15} {'Saldo':>15}")
-            self.stdout.write("-" * 82)
+            self.stdout.write(
+                f"{'Cosechero':35} {'Gastos':>15} {'Producción':>15} "
+                f"{'Saldo':>15} {'Última actividad':>18}"
+            )
+            self.stdout.write("-" * 102)
             for r in filas:
                 c = r["cosechero"]
                 nombre = f"{c.nombre} {c.apellido}".strip()
-                self.stdout.write(f"{nombre:35} {r['gastos']:>15,.2f} {r['produccion']:>15,.2f} {r['saldo']:>15,.2f}")
+                marca = ' [SIN ENTREGA]' if r['sin_produccion_entregada'] else ''
+                ultima = r['ultima_actividad_fecha'].isoformat() if r['ultima_actividad_fecha'] else 'N/A'
+                self.stdout.write(
+                    f"{(nombre + marca):35} {r['gastos']:>15,.2f} "
+                    f"{r['produccion']:>15,.2f} {r['saldo']:>15,.2f} {ultima:>18}"
+                )
 
         imprimir_grupo(f"Cosecha #{cosecha_id} — Nos deben (saldo > 0)", nos_deben)
         self.stdout.write(self.style.NOTICE(f"Subtotal nos deben: {total_nos_deben:,.2f}\n"))
@@ -52,7 +60,12 @@ class Command(BaseCommand):
         if csv_path:
             with open(csv_path, 'w', newline='', encoding='utf-8') as f:
                 w = csv.writer(f)
-                w.writerow(["cosecha_id", "cosechero_id", "cosechero_nombre", "gastos", "produccion", "saldo", "grupo"])
+                w.writerow([
+                    "cosecha_id", "cosechero_id", "cosechero_nombre",
+                    "articulos", "avances", "gastos", "produccion", "saldo", "grupo",
+                    "cantidad_entregas", "sin_produccion_entregada", "entregas_sin_precio",
+                    "ultima_actividad", "tipos_ultima_actividad", "precision_fecha",
+                ])
                 for r in resultados:
                     c = r["cosechero"]
                     grupo = "nos_deben" if r["saldo"] > 0 else ("les_debemos" if r["saldo"] < 0 else "saldado")
@@ -60,9 +73,17 @@ class Command(BaseCommand):
                         cosecha_id,
                         c.id,
                         f"{c.nombre} {c.apellido}".strip(),
+                        f"{r['gastos_articulos']:.2f}",
+                        f"{r['gastos_avances']:.2f}",
                         f"{r['gastos']:.2f}",
                         f"{r['produccion']:.2f}",
                         f"{r['saldo']:.2f}",
                         grupo,
+                        r['cantidad_entregas'],
+                        'si' if r['sin_produccion_entregada'] else 'no',
+                        r['entregas_sin_precio'],
+                        r['ultima_actividad_fecha'].isoformat() if r['ultima_actividad_fecha'] else '',
+                        '|'.join(r['ultima_actividad_tipos']),
+                        r['ultima_actividad_precision'] or '',
                     ])
             self.stdout.write(self.style.SUCCESS(f"CSV escrito en: {csv_path}"))

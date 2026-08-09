@@ -13,10 +13,18 @@ def dashboard(request):
     cosechas = Cosecha.objects.all().order_by('-fecha_inicio')
     cosecha_id = request.GET.get('cosecha')
     cosecha = get_object_or_404(Cosecha, pk=cosecha_id) if cosecha_id else cosechas.first()
-    saldos = calcular_saldos_cosecha(cosecha.id) if cosecha else []
+    saldos_completos = calcular_saldos_cosecha(cosecha.id) if cosecha else []
+    sin_produccion = [fila for fila in saldos_completos if fila['sin_produccion_entregada']]
+    total_sin_produccion = sum((fila['gastos'] for fila in sin_produccion), Decimal('0'))
+    cuentas_sin_precio = [fila for fila in saldos_completos if fila['entregas_sin_precio'] > 0]
+
+    saldos = saldos_completos
     q = request.GET.get('q', '').strip().lower()
     if q:
         saldos = [fila for fila in saldos if q in str(fila['cosechero']).lower()]
+    solo_sin_produccion = request.GET.get('sin_produccion') == '1'
+    if solo_sin_produccion:
+        saldos = [fila for fila in saldos if fila['sin_produccion_entregada']]
 
     nos_deben = [fila for fila in saldos if fila['saldo'] > 0]
     les_debemos = [fila for fila in saldos if fila['saldo'] < 0]
@@ -32,11 +40,15 @@ def dashboard(request):
         'cosechas': cosechas,
         'cosecha': cosecha,
         'q': request.GET.get('q', '').strip(),
+        'solo_sin_produccion': solo_sin_produccion,
         'nos_deben': nos_deben,
         'les_debemos': les_debemos,
         'total_nos_deben': total_nos_deben,
         'total_les_debemos': total_les_debemos,
         'balance_neto': total_nos_deben - total_les_debemos,
+        'sin_produccion': sin_produccion,
+        'total_sin_produccion': total_sin_produccion,
+        'cuentas_sin_precio': cuentas_sin_precio,
     }
     return render(request, 'dashboard/dashboard.html', context)
 
@@ -48,11 +60,33 @@ def exportar_csv(request):
     response['Content-Disposition'] = f'attachment; filename="saldos_{cosecha.id}.csv"'
     response.write('\ufeff')
     writer = csv.writer(response)
-    writer.writerow(['Cosechero', 'Gastos', 'Producción', 'Saldo', 'Estado'])
+    writer.writerow([
+        'Cosechero ID', 'Cosechero', 'Artículos', 'Avances', 'Gastos',
+        'Producción', 'Saldo', 'Estado', 'Cantidad entregas',
+        'Sin producción entregada', 'Entregas sin precio',
+        'Última actividad', 'Tipos de última actividad', 'Precisión de fecha',
+    ])
     for fila in calcular_saldos_cosecha(cosecha.id):
+        estado = (
+            'Nos debe' if fila['saldo'] > 0
+            else 'Le debemos' if fila['saldo'] < 0
+            else 'Saldado'
+        )
         writer.writerow([
-            str(fila['cosechero']), fila['gastos'], fila['produccion'], fila['saldo'],
-            'Nos debe' if fila['saldo'] > 0 else 'Le debemos' if fila['saldo'] < 0 else 'Saldado',
+            fila['cosechero'].id,
+            str(fila['cosechero']),
+            f"{fila['gastos_articulos']:.2f}",
+            f"{fila['gastos_avances']:.2f}",
+            f"{fila['gastos']:.2f}",
+            f"{fila['produccion']:.2f}",
+            f"{fila['saldo']:.2f}",
+            estado,
+            fila['cantidad_entregas'],
+            'Sí' if fila['sin_produccion_entregada'] else 'No',
+            fila['entregas_sin_precio'],
+            fila['ultima_actividad_fecha'].isoformat() if fila['ultima_actividad_fecha'] else '',
+            fila['ultima_actividad_etiqueta'],
+            fila['ultima_actividad_precision'] or '',
         ])
     return response
 

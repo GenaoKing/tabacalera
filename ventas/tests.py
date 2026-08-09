@@ -144,7 +144,7 @@ class VentaSeguraTests(TestCase):
         })
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.json()['venta_id'], resultado['venta'].id)
-        self.assertEqual(respuesta.json()['total'], 37.5)
+        self.assertEqual(respuesta.json()['total'], '37.50')
 
     def test_tickets_pagina_cincuenta_y_conserva_filtros(self):
         Venta.objects.bulk_create([

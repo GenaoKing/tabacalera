@@ -528,8 +528,8 @@ def procesar_detalles_articulos(detalles_articulos):
             'descripcion': detalle.articulo.descripcion,
             'presentacion': detalle.articulo.presentacion,
             'cantidad': detalle.cantidad,
-            'precio_venta_final': float(detalle.precio_venta_final),
-            'importe': float(detalle.cantidad * detalle.precio_venta_final),
+            'precio_venta_final': detalle.precio_venta_final,
+            'importe': detalle.cantidad * detalle.precio_venta_final,
         }
         for detalle in detalles_articulos
     ]
@@ -547,9 +547,9 @@ def procesar_detalles_articulos(detalles_articulos):
         agrupados.append({
             'descripcion': group_list[0]['descripcion'],
             'presentacion': group_list[0]['presentacion'],
-            'cantidad_total': sum(item['cantidad'] for item in group_list),
+            'cantidad_total': sum((item['cantidad'] for item in group_list), Decimal('0')),
             'precio_venta_final': key[2],
-            'importe_total': sum(item['importe'] for item in group_list),
+            'importe_total': sum((item['importe'] for item in group_list), Decimal('0')),
         })
     return agrupados
 
@@ -567,8 +567,8 @@ def obtener_detalles_venta(venta: Venta) -> dict:
             'descripcion': d.articulo.descripcion,
             'presentacion': getattr(d.articulo, 'presentacion', ''),
             'cantidad': d.cantidad,
-            'precio_venta_final': float(d.precio_venta_final),
-            'importe': float(d.cantidad * d.precio_venta_final),
+            'precio_venta_final': d.precio_venta_final,
+            'importe': d.cantidad * d.precio_venta_final,
         }
         for d in detalles_raw
     ]
@@ -581,9 +581,9 @@ def obtener_detalles_venta(venta: Venta) -> dict:
         agrupados.append({
             'descripcion': items[0]['descripcion'],
             'presentacion': items[0]['presentacion'],
-            'cantidad_total': sum(i['cantidad'] for i in items),
+            'cantidad_total': sum((i['cantidad'] for i in items), Decimal('0')),
             'precio_venta_final': key[1],
-            'importe_total': sum(i['importe'] for i in items),
+            'importe_total': sum((i['importe'] for i in items), Decimal('0')),
         })
 
     # Avances
@@ -594,7 +594,7 @@ def obtener_detalles_venta(venta: Venta) -> dict:
     avances_list = [
         {
             'descripcion': a.avance.descripcion,
-            'monto_pagado': float(a.avance.monto_pagado),
+            'monto_pagado': a.monto,
             'numero': a.avance.numero,
             'tipo': a.avance.tipo_avance,
         }
@@ -604,7 +604,7 @@ def obtener_detalles_venta(venta: Venta) -> dict:
     return {
         'cosechero_nombre': f"{venta.cosechero.nombre} {venta.cosechero.apellido}",
         'fecha_venta': venta.fecha_venta.strftime('%Y-%m-%d'),
-        'total': float(venta.total),
+        'total': venta.total,
         'detalles': agrupados,
         'avances': avances_list,
     }

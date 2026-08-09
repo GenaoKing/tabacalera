@@ -4,7 +4,7 @@ Servicio unificado de importación de avances.
 Flujo: parse_file() → preview JSON → import_rows()
 """
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 from pathlib import Path
@@ -494,18 +494,24 @@ def _parse_unificado(df, cosecheros_by_id, cosecheros_by_cuenta):
 # ─────────────────────────────────────────────
 # PASO 2: Importar filas confirmadas
 # ─────────────────────────────────────────────
-def obtener_venta_existente(cosechero_id: int, fecha_sabado: date) -> Optional[Venta]:
-    """
-    Busca una venta existente para el cosechero en la semana del sábado.
-    Idéntica a la lógica en ventas/views.py — busca por rango de semana.
-    """
-    inicio_semana = fecha_sabado - timedelta(days=fecha_sabado.weekday())
-    fin_semana = inicio_semana + timedelta(days=6)
-    ventas = Venta.objects.filter(
+def obtener_venta_existente(
+    cosechero_id: int,
+    cosecha_id: int,
+    fecha_sabado: date,
+) -> Optional[Venta]:
+    """Busca la cuenta semanal exacta sin cruzar cosechas."""
+    ventas = list(Venta.objects.filter(
         cosechero_id=cosechero_id,
-        fecha_venta__range=(inicio_semana, fin_semana),
-    )
-    return ventas.first() if ventas.exists() else None
+        cosecha_id=cosecha_id,
+        fecha_venta=fecha_sabado,
+        is_active=True,
+    ).order_by('id')[:2])
+    if len(ventas) > 1:
+        raise ValueError(
+            'Esta semana tiene más de un ticket histórico activo; '
+            'la importación no puede elegir uno automáticamente.'
+        )
+    return ventas[0] if ventas else None
 
 
 def get_cosechas_list() -> list[dict]:
@@ -535,10 +541,12 @@ def import_confirmed_rows(rows: list[dict], cosecha_id: int, descripcion_default
         'errores': [],
     }
 
+    cosecha = Cosecha.objects.get(pk=cosecha_id)
     cosecheros_cache: dict[int, Cosechero] = {}
-    ventas_cache: dict[tuple[int, date], Venta] = {}
+    ventas_cache: dict[tuple[int, int, date], Venta] = {}
 
     for row in rows:
+        key = None
         try:
             cosechero_id_row = int(row['cosechero_id'])
             monto = Decimal(str(row['monto']))
@@ -558,7 +566,8 @@ def import_confirmed_rows(rows: list[dict], cosecha_id: int, descripcion_default
                 continue
 
             fecha_sabado = proximo_sabado(fecha_avance)
-            key = (cosechero_id_row, fecha_sabado)
+            key = (cosechero_id_row, cosecha_id, fecha_sabado)
+            accion_venta = None
 
             with transaction.atomic():
                 # Cosechero
@@ -570,33 +579,36 @@ def import_confirmed_rows(rows: list[dict], cosecha_id: int, descripcion_default
                 # Venta del sábado (reutiliza si existe en la misma semana)
                 venta = ventas_cache.get(key)
                 if venta is None:
-                    venta = obtener_venta_existente(cosechero_id_row, fecha_sabado)
+                    venta = obtener_venta_existente(
+                        cosechero_id_row, cosecha_id, fecha_sabado,
+                    )
                     if venta is None:
                         venta = Venta.objects.create(
                             cosechero=c_obj,
                             fecha_venta=fecha_sabado,
                             impreso=False,
                             total=monto,
-                            cosecha_id=cosecha_id,
+                            cosecha=cosecha,
                         )
-                        stats['ventas_creadas'] += 1
+                        accion_venta = 'creada'
                     else:
                         venta.total = (
                             Decimal(str(venta.total))
                             if not isinstance(venta.total, Decimal)
                             else venta.total
                         ) + monto
-                        venta.save()
-                        stats['ventas_actualizadas'] += 1
-                    ventas_cache[key] = venta
+                        venta.impreso = False
+                        venta.save(update_fields=['total', 'impreso'])
+                        accion_venta = 'actualizada'
                 else:
                     venta.total = (
                         Decimal(str(venta.total))
                         if not isinstance(venta.total, Decimal)
                         else venta.total
                     ) + monto
-                    venta.save()
-                    stats['ventas_actualizadas'] += 1
+                    venta.impreso = False
+                    venta.save(update_fields=['total', 'impreso'])
+                    accion_venta = 'actualizada'
 
                 # Descripción especial para no-cosechero
                 if cosechero_id_row == ID_NO_COSECHERO and not descripcion:
@@ -620,13 +632,22 @@ def import_confirmed_rows(rows: list[dict], cosecha_id: int, descripcion_default
                     monto=monto,
                 )
 
-                stats['avances_creados'] += 1
+            ventas_cache[key] = venta
+            stats['avances_creados'] += 1
+            if accion_venta == 'creada':
+                stats['ventas_creadas'] += 1
+            else:
+                stats['ventas_actualizadas'] += 1
 
         except Cosechero.DoesNotExist:
             stats['errores'].append(
                 f"Fila {row.get('index', '?')}: Cosechero ID {row.get('cosechero_id')} no existe"
             )
         except Exception as e:
+            if key is not None:
+                # Un rollback no revierte los atributos del objeto Python.
+                # Forzar una nueva lectura evita reutilizar un total obsoleto.
+                ventas_cache.pop(key, None)
             stats['errores'].append(
                 f"Fila {row.get('index', '?')}: {str(e)}"
             )

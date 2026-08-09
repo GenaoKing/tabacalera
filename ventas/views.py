@@ -181,7 +181,7 @@ def registrar_venta(request):
                     'venta_id': venta.id,
                     'operacion': str(resultado['operacion'].clave),
                     'replayed': resultado.get('replayed', False),
-                    'total_semanal': float(venta.total),
+                    'total_semanal': f'{venta.total:.2f}',
                     'impreso': venta.impreso,
                     'print_url': request.build_absolute_uri(
                         f'/ventas/imprimir/{venta.id}/'
@@ -347,6 +347,6 @@ def resumen_semanal(request):
         'sabado': sabado.isoformat(),
         'existe': venta is not None,
         'venta_id': venta.id if venta else None,
-        'total': float(venta.total) if venta else 0,
+        'total': f'{venta.total:.2f}' if venta else '0.00',
         'impreso': venta.impreso if venta else False,
     })

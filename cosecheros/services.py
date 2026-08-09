@@ -9,9 +9,9 @@ gastos (artículos + avances) y saldo resultante.
 precios hardcodeada y duplicada que antes vivía en views.py y en
 utils/reportes.py.
 """
+from datetime import date
 from decimal import Decimal
-
-from django.db.models import F, Sum
+from typing import Iterable
 
 from .models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
 
@@ -91,86 +91,193 @@ def calcular_produccion_total(cosechero: Cosechero, cosecha: Cosecha) -> Decimal
 
 
 def calcular_gastos(cosechero: Cosechero, cosecha: Cosecha) -> Decimal:
-    """Suma artículos + avances para cosechero/cosecha (gastos a cuenta de la cosecha)."""
-    # Import local para evitar dependencia circular a nivel de módulo con ventas.
+    """Suma artículos + avances desde la misma fuente de conciliación."""
+    filas = calcular_resumenes_cosecha(cosecha.id, cosechero_ids=[cosechero.id])
+    return filas[0]['gastos'] if filas else Decimal('0')
+
+
+ACTIVIDAD_ETIQUETAS = {
+    'entrega': 'Entrega de tabaco',
+    'avance': 'Avance',
+    'articulo': 'Artículo',
+    'venta': 'Venta semanal',
+}
+ACTIVIDAD_ORDEN = tuple(ACTIVIDAD_ETIQUETAS)
+
+
+def _agregar_actividad(
+    actividades: dict[int, list[tuple[date, str, str]]],
+    cosechero_id: int,
+    fecha: date | None,
+    tipo: str,
+    precision: str,
+) -> None:
+    if fecha is not None:
+        actividades.setdefault(cosechero_id, []).append((fecha, tipo, precision))
+
+
+def _ultima_actividad(candidatas: list[tuple[date, str, str]]) -> dict:
+    if not candidatas:
+        return {
+            'ultima_actividad_fecha': None,
+            'ultima_actividad_tipos': (),
+            'ultima_actividad_etiqueta': 'Sin actividad fechada',
+            'ultima_actividad_precision': None,
+        }
+
+    fecha_maxima = max(fecha for fecha, _, _ in candidatas)
+    candidatas_maximas = [fila for fila in candidatas if fila[0] == fecha_maxima]
+    tipos_presentes = {tipo for _, tipo, _ in candidatas_maximas}
+    tipos = tuple(tipo for tipo in ACTIVIDAD_ORDEN if tipo in tipos_presentes)
+    precisiones = {precision for _, _, precision in candidatas_maximas}
+    if len(precisiones) > 1:
+        precision = 'mixta'
+    else:
+        precision = precisiones.pop()
+    return {
+        'ultima_actividad_fecha': fecha_maxima,
+        'ultima_actividad_tipos': tipos,
+        'ultima_actividad_etiqueta': ' + '.join(ACTIVIDAD_ETIQUETAS[tipo] for tipo in tipos),
+        'ultima_actividad_precision': precision,
+    }
+
+
+def calcular_resumenes_cosecha(
+    cosecha_id: int,
+    cosechero_ids: Iterable[int] | None = None,
+) -> list[dict]:
+    """Construye el universo financiero completo de una cosecha.
+
+    La unión incluye cosecheros con entregas o ventas activas. Los avances
+    únicamente pertenecen a una cosecha cuando están vinculados a una Venta.
+    Todos los importes permanecen como Decimal hasta su serialización.
+    """
     from ventas.models import DetalleArticulo, DetalleAvance, Venta
-    from ventas.services import procesar_detalles_articulos
 
-    ventas = Venta.objects.filter(cosechero_id=cosechero.id, cosecha=cosecha)
+    filtro_ids = None if cosechero_ids is None else {int(pk) for pk in cosechero_ids}
+    if filtro_ids == set():
+        return []
 
-    detalles_articulos = (
-        DetalleArticulo.objects
-        .filter(venta__in=ventas)
-        .select_related('articulo')
-        .order_by('articulo__descripcion')
+    cosecha = Cosecha.objects.get(pk=cosecha_id)
+    precios = obtener_precios(cosecha)
+
+    ventas_qs = Venta.objects.filter(cosecha=cosecha, is_active=True).select_related('cosechero')
+    entregas_qs = EntregaTabaco.objects.filter(cosecha=cosecha).select_related('cosechero')
+    if filtro_ids is not None:
+        ventas_qs = ventas_qs.filter(cosechero_id__in=filtro_ids)
+        entregas_qs = entregas_qs.filter(cosechero_id__in=filtro_ids)
+
+    ventas = list(ventas_qs.order_by('id'))
+    entregas = list(entregas_qs.order_by('cosechero_id', 'fecha_entrega', 'id'))
+    venta_ids = [venta.id for venta in ventas]
+
+    cosecheros: dict[int, Cosechero] = {}
+    gastos_articulos: dict[int, Decimal] = {}
+    gastos_avances: dict[int, Decimal] = {}
+    produccion: dict[int, Decimal] = {}
+    cantidad_entregas: dict[int, int] = {}
+    entregas_sin_precio: dict[int, int] = {}
+    actividades: dict[int, list[tuple[date, str, str]]] = {}
+
+    for venta in ventas:
+        cosecheros[venta.cosechero_id] = venta.cosechero
+
+    for entrega in entregas:
+        cosechero_id = entrega.cosechero_id
+        cosecheros[cosechero_id] = entrega.cosechero
+        cantidad_entregas[cosechero_id] = cantidad_entregas.get(cosechero_id, 0) + 1
+        resultado = calcular_produccion_entrega(entrega, precios.get(entrega.variedad))
+        produccion[cosechero_id] = (
+            produccion.get(cosechero_id, Decimal('0')) + resultado['subtotal']
+        )
+        if resultado['sin_precio']:
+            entregas_sin_precio[cosechero_id] = entregas_sin_precio.get(cosechero_id, 0) + 1
+        _agregar_actividad(actividades, cosechero_id, entrega.fecha_entrega, 'entrega', 'exacta')
+
+    ventas_con_detalle: set[int] = set()
+    if venta_ids:
+        detalles_articulo = DetalleArticulo.objects.filter(venta_id__in=venta_ids).values(
+            'venta_id', 'venta__cosechero_id', 'venta__fecha_venta',
+            'cantidad', 'precio_venta_final', 'operacion__fecha_movimiento',
+        )
+        for detalle in detalles_articulo:
+            venta_id = detalle['venta_id']
+            cosechero_id = detalle['venta__cosechero_id']
+            ventas_con_detalle.add(venta_id)
+            importe = detalle['cantidad'] * detalle['precio_venta_final']
+            gastos_articulos[cosechero_id] = (
+                gastos_articulos.get(cosechero_id, Decimal('0')) + importe
+            )
+            fecha_operacion = detalle['operacion__fecha_movimiento']
+            _agregar_actividad(
+                actividades,
+                cosechero_id,
+                fecha_operacion or detalle['venta__fecha_venta'],
+                'articulo',
+                'exacta' if fecha_operacion else 'cierre_semanal',
+            )
+
+        detalles_avance = DetalleAvance.objects.filter(venta_id__in=venta_ids).values(
+            'venta_id', 'venta__cosechero_id', 'monto', 'avance__fecha',
+        )
+        for detalle in detalles_avance:
+            venta_id = detalle['venta_id']
+            cosechero_id = detalle['venta__cosechero_id']
+            ventas_con_detalle.add(venta_id)
+            gastos_avances[cosechero_id] = (
+                gastos_avances.get(cosechero_id, Decimal('0')) + detalle['monto']
+            )
+            _agregar_actividad(
+                actividades, cosechero_id, detalle['avance__fecha'], 'avance', 'exacta',
+            )
+
+    for venta in ventas:
+        if venta.id not in ventas_con_detalle:
+            _agregar_actividad(
+                actividades, venta.cosechero_id, venta.fecha_venta,
+                'venta', 'cierre_semanal',
+            )
+
+    resultados = []
+    for cosechero_id, cosechero in cosecheros.items():
+        articulos = gastos_articulos.get(cosechero_id, Decimal('0'))
+        avances = gastos_avances.get(cosechero_id, Decimal('0'))
+        gastos = articulos + avances
+        total_produccion = produccion.get(cosechero_id, Decimal('0'))
+        numero_entregas = cantidad_entregas.get(cosechero_id, 0)
+        fila = {
+            'cosechero': cosechero,
+            'gastos_articulos': articulos,
+            'gastos_avances': avances,
+            'gastos': gastos,
+            'produccion': total_produccion,
+            'saldo': gastos - total_produccion,
+            'cantidad_entregas': numero_entregas,
+            'sin_produccion_entregada': gastos > 0 and numero_entregas == 0,
+            'entregas_sin_precio': entregas_sin_precio.get(cosechero_id, 0),
+        }
+        fila.update(_ultima_actividad(actividades.get(cosechero_id, [])))
+        resultados.append(fila)
+
+    return sorted(
+        resultados,
+        key=lambda fila: (
+            fila['cosechero'].nombre.lower(),
+            fila['cosechero'].apellido.lower(),
+            fila['cosechero'].id,
+        ),
     )
-    articulos_agrupados = procesar_detalles_articulos(detalles_articulos)
-    subtotal_articulos = sum(
-        (Decimal(str(a['importe_total'])) for a in articulos_agrupados), Decimal('0')
-    )
-
-    subtotal_avances = (
-        DetalleAvance.objects
-        .filter(venta__in=ventas)
-        .aggregate(s=Sum('avance__monto_pagado'))
-        .get('s') or Decimal('0')
-    )
-
-    return subtotal_articulos + subtotal_avances
 
 
 def calcular_saldos_cosecha(cosecha_id: int) -> list[dict]:
     """
-    Retorna [{cosechero, gastos, produccion, saldo}] para todos los
-    cosecheros con al menos una entrega en la cosecha. saldo = gastos -
-    produccion (positivo => el cosechero nos debe; negativo => se le debe).
+    Alias compatible del universo financiero completo de la cosecha.
+    saldo = gastos - produccion (positivo => el cosechero nos debe;
+    negativo => se le debe).
 
-    No filtra por signo: el llamador decide cómo agrupar/mostrar ambos
-    lados (ver comando resumen_perdidas_cosecha).
+    No filtra por signo: el llamador agrupa o muestra ambos lados.
     """
-    from ventas.models import DetalleArticulo, DetalleAvance
-
-    cosecha = Cosecha.objects.get(pk=cosecha_id)
-    precios = obtener_precios(cosecha)
-    entregas = list(
-        EntregaTabaco.objects.filter(cosecha=cosecha)
-        .select_related('cosechero')
-        .order_by('cosechero_id')
-    )
-
-    cosecheros = {}
-    produccion_por_cosechero = {}
-    for entrega in entregas:
-        cosecheros[entrega.cosechero_id] = entrega.cosechero
-        valor = calcular_produccion_entrega(entrega, precios.get(entrega.variedad))['subtotal']
-        produccion_por_cosechero[entrega.cosechero_id] = (
-            produccion_por_cosechero.get(entrega.cosechero_id, Decimal('0')) + valor
-        )
-
-    articulos = {
-        fila['venta__cosechero_id']: fila['total'] or Decimal('0')
-        for fila in DetalleArticulo.objects.filter(venta__cosecha=cosecha)
-        .values('venta__cosechero_id')
-        .annotate(total=Sum(F('cantidad') * F('precio_venta_final')))
-    }
-    avances = {
-        fila['venta__cosechero_id']: fila['total'] or Decimal('0')
-        for fila in DetalleAvance.objects.filter(venta__cosecha=cosecha)
-        .values('venta__cosechero_id')
-        .annotate(total=Sum('avance__monto_pagado'))
-    }
-
-    resultados = []
-    for cosechero_id, cosechero in cosecheros.items():
-        produccion = produccion_por_cosechero.get(cosechero_id, Decimal('0'))
-        gastos = articulos.get(cosechero_id, Decimal('0')) + avances.get(cosechero_id, Decimal('0'))
-        resultados.append({
-            'cosechero': cosechero,
-            'gastos': gastos,
-            'produccion': produccion,
-            'saldo': gastos - produccion,
-        })
-    return resultados
+    return calcular_resumenes_cosecha(cosecha_id)
 
 
 def clonar_precios(desde_cosecha: Cosecha, hacia_cosecha: Cosecha) -> int:

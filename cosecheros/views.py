@@ -16,6 +16,7 @@ from cosecheros.models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadC
 from cosecheros.services import (
     CLASIFICACIONES,
     calcular_produccion_entrega,
+    calcular_resumenes_cosecha,
     clonar_precios,
     obtener_precios,
 )
@@ -130,10 +131,18 @@ def generar_tablas_entregas(cosechero, entregas, styles, usable_width, precios):
 
 @login_required
 def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
-    cosechero = get_object_or_404(Cosechero, pk=cosechero_id, is_active=True)
+    cosechero = get_object_or_404(Cosechero, pk=cosechero_id)
     cosecha = get_object_or_404(Cosecha, pk=cosecha_id)
 
-    ventas = Venta.objects.filter(cosechero_id=cosechero_id, cosecha=cosecha)
+    ventas = Venta.objects.filter(cosechero_id=cosechero_id, cosecha=cosecha, is_active=True)
+    resumenes = calcular_resumenes_cosecha(cosecha_id, cosechero_ids=[cosechero_id])
+    resumen_financiero = resumenes[0] if resumenes else {
+        'gastos_articulos': Decimal('0'),
+        'gastos_avances': Decimal('0'),
+        'gastos': Decimal('0'),
+        'produccion': Decimal('0'),
+        'saldo': Decimal('0'),
+    }
     detalles_articulos = DetalleArticulo.objects.filter(venta__in=ventas).select_related('articulo').order_by('articulo__descripcion')
 
     articulos_agrupados = procesar_detalles_articulos(detalles_articulos)
@@ -176,7 +185,6 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     data = [['Artículo', 'Presentación', 'Cantidad', 'Precio', 'Importe']]
 
     # Añadir filas a la tabla basadas en los artículos agrupados
-    subtotal_articulos = decimal.Decimal('0')
     articulos_ordenados = sorted(articulos_agrupados, key=lambda x: x['descripcion'])
     for articulo in articulos_ordenados:
         data.append([
@@ -186,7 +194,7 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
             f"${articulo['precio_venta_final']:.2f}",
             f"${articulo['importe_total']:,.2f}"
         ])
-        subtotal_articulos += decimal.Decimal(str(articulo['importe_total']))
+    subtotal_articulos = resumen_financiero['gastos_articulos']
 
     # Crear la tabla con los datos
     #data_ordenada = sorted(data, key=lambda x: x[0])
@@ -207,7 +215,6 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
 
 # Preparar los datos para la tabla de avances
 
-    subtotal_avances = decimal.Decimal('0')
     data_avances = [['Tipo','Numero', 'Descripción', 'Fecha', 'Monto']]
     for avance in avances:
         data_avances.append([
@@ -215,9 +222,9 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
             avance.avance.numero,
             avance.avance.descripcion,
             avance.avance.fecha.strftime("%d/%m/%Y"),
-            f"${avance.avance.monto_pagado:,.2f}"
+            f"${avance.monto:,.2f}"
         ])
-        subtotal_avances+=avance.avance.monto_pagado
+    subtotal_avances = resumen_financiero['gastos_avances']
 
     tabla_avances = Table(data_avances, colWidths=[usable_width * 0.2, usable_width * 0.1 ,usable_width * 0.3, usable_width * 0.2, usable_width * 0.2])
     tabla_avances.setStyle(TableStyle([
@@ -235,14 +242,14 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     #story.append(Spacer(1, 12))
 
     entregas = EntregaTabaco.objects.filter(cosechero=cosechero,cosecha=cosecha).order_by('fecha_entrega')
-    subtotal_entregas = decimal.Decimal('0')
+    subtotal_entregas = resumen_financiero['produccion']
     if entregas.exists():
         precios = obtener_precios(cosecha)
-        subtotal_entregas, story_entregas = generar_tablas_entregas(cosechero, entregas, styles, usable_width, precios)
+        _, story_entregas = generar_tablas_entregas(cosechero, entregas, styles, usable_width, precios)
         story.extend(story_entregas)
 
-    total_gasto = subtotal_articulos + subtotal_avances
-    total = total_gasto - subtotal_entregas
+    total_gasto = resumen_financiero['gastos']
+    total = resumen_financiero['saldo']
     resumen_data = [
         ['Subtotal Artículos:', f"${subtotal_articulos:,.2f}"],
         ['Subtotal Avances:', f"${subtotal_avances:,.2f}"],
