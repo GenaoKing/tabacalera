@@ -132,6 +132,10 @@ Un `Avance` aislado no tiene cosecha y no se infiere por fecha. Los siete casos 
 
 Por cada cosechero se calculan en `Decimal`: artículos, avances desde `DetalleAvance.monto`, gastos, producción y `saldo = gastos - producción`. También se exponen cantidad de entregas, entregas sin precio, indicador sin producción y última actividad.
 
+El Dashboard agrega dos indicadores ponderados por terreno para el universo completo seleccionado: `gasto promedio por tarea = gastos totales / tareas totales` y `producción promedio por tarea = producción valorizada total / tareas totales`. El denominador suma `Cosechero.terreno_sembrado`, se mantiene en `Decimal` y no se calcula si la suma es cero. Las búsquedas y filtros visuales no cambian estos indicadores.
+
+Actualmente `terreno_sembrado` está en la ficha del cosechero y no conserva un valor distinto por cosecha. Por eso los indicadores históricos usan el terreno registrado actualmente. Si el área cambia entre temporadas, será necesario modelar el terreno por `cosechero + cosecha` antes de interpretar estos promedios como una serie histórica exacta.
+
 La fecha de actividad es operativa. Entregas y avances tienen fecha exacta; artículos nuevos usan `OperacionVenta.fecha_movimiento`; artículos históricos sin operación usan `Venta.fecha_venta` con precisión `cierre_semanal`. Si coinciden fuentes exactas e históricas, la precisión es `mixta`.
 
 ## 5. Los dos caminos para crear un "cheque" (`Avance`)

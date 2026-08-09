@@ -1,6 +1,6 @@
 # Plan de mejora — Tabacalera
 
-> Última auditoría de código: 2026-08-08. Ver [ARQUITECTURA.md](ARQUITECTURA.md) para el mapa del sistema referenciado aquí.
+> Última auditoría de código: 2026-08-09. Ver [ARQUITECTURA.md](ARQUITECTURA.md) para el mapa del sistema referenciado aquí.
 
 ## Ejecución del roadmap integral — 2026-08-08
 
@@ -15,6 +15,21 @@
 | Dashboard financiero | Completada | `7207a7c`, resumen por cosecha, grupos de saldo, PDF y CSV desde cálculo común |
 | Hardening | Completada en código | `fc2e197`, entorno, zona horaria, favicon, recursos locales; smoke autenticado correcto, pendiente impresora física |
 | Universo financiero completo | Completada | `e22cb74`, unión de entregas y ventas, actividad operativa, flujo `Decimal`, incidencias y consultas constantes |
+| Indicadores promedio por tarea | Completada | `dbfe259`, cards ponderados de gasto y producción, protección sin terreno y pruebas de presentación |
+
+## Fase 9 — Indicadores promedio por tarea
+
+- [x] Calcular gasto total y producción valorizada total desde el universo financiero completo.
+- [x] Dividir ambos totales entre la suma `Decimal` de tareas registradas en las fichas de los cosecheros del universo.
+- [x] Mantener los indicadores independientes de la búsqueda y del filtro “Sin producción”.
+- [x] Mostrar dos cards responsive con el denominador utilizado.
+- [x] Evitar división por cero y mostrar un estado explícito sin datos.
+- [x] Documentar que el terreno actual no conserva historial por cosecha.
+- [x] Probar cifras, renderizado y caso sin tareas.
+
+No hay migración ni cambio de datos. Como paso futuro, se evaluará guardar el terreno por `cosechero + cosecha` si la empresa necesita comparaciones históricas exactas entre temporadas.
+
+**Validación**: commit `dbfe259`; 21 pruebas aprobadas, `manage.py check` limpio, ninguna migración pendiente y Tailwind recompilado.
 
 ## Fase 8 — Universo financiero completo por cosecha
 

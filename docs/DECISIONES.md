@@ -37,6 +37,8 @@
 - La alerta de cuentas sin producción forma parte del total y cantidad general de “Nos deben”.
 - La última actividad usa la fecha operativa: entrega, fecha real del avance u operación. Para artículos históricos sin `OperacionVenta`, usa el sábado de `Venta` y lo identifica como cierre semanal aproximado.
 - Todos los cálculos de dominio usan `Decimal`; la conversión a texto de dos decimales ocurre únicamente en la presentación o exportación.
+- Los promedios por tarea son ponderados: se divide el gasto o la producción total del universo completo entre la suma de `terreno_sembrado`; no se promedian ratios individuales ni se alteran al buscar o filtrar filas.
+- Si el total de tareas es cero, el Dashboard muestra “Sin datos de terreno” en lugar de dividir entre cero o presentar un cero engañoso.
 - Los avances sin `DetalleAvance` no se asignan por rango de fecha ni se contabilizan automáticamente. Sus casos conocidos están en `INCIDENCIAS_DATOS.md`.
 - En la operación normal no se espera saldo exactamente cero; el servicio y CSV lo conservan defensivamente sin crear una tabla adicional.
 
@@ -45,6 +47,7 @@
 - Definir formalmente el efecto contable futuro de `Avance.estado = nulo` y `cambiado`. La fase actual conserva la regla histórica porque todos los avances productivos existentes están activos y realizados.
 - Definir si el redondeo monetario debe aplicarse por detalle, por agrupación o solo al total. Hasta entonces se conserva la precisión Decimal existente y se presentan dos decimales.
 - Resolver manualmente los siete avances históricos sin cosecha antes de incorporarlos a cualquier conciliación.
+- Evaluar un modelo de terreno por `cosechero + cosecha` si se necesita comparar promedios históricos cuando el área sembrada cambia entre temporadas.
 
 ## Seguridad local
 
