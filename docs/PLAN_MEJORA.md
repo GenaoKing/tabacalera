@@ -14,8 +14,35 @@
 | CRUD y altas rápidas | Completada | `9e5ffce`, cosecheros, artículos y proveedores; soft-delete y validaciones |
 | Dashboard financiero | Completada | `7207a7c`, resumen por cosecha, grupos de saldo, PDF y CSV desde cálculo común |
 | Hardening | Completada en código | `fc2e197`, entorno, zona horaria, favicon, recursos locales; smoke autenticado correcto, pendiente impresora física |
+| Universo financiero completo | Completada | `e22cb74`, unión de entregas y ventas, actividad operativa, flujo `Decimal`, incidencias y consultas constantes |
 
-Validación final: `manage.py check` sin hallazgos, migraciones sin pendientes, Tailwind compilado, `collectstatic` correcto, 11 pruebas aprobadas y smoke autenticado `200` en todas las pantallas operativas. Los puntos que exigen hardware real no se consideran verificados hasta probar la impresora conectada.
+## Fase 8 — Universo financiero completo por cosecha
+
+**Objetivo**: que la conciliación incluya a todo cosechero con actividad, aunque aún no haya entregado tabaco, sin duplicar saldos ni asignar avances ambiguos.
+
+- [x] Construir la unión de entregas y ventas activas por cosecha en una fuente financiera única.
+- [x] Separar artículos, avances, gastos, producción y saldo usando `Decimal` de extremo a extremo.
+- [x] Incorporar fecha, tipo y precisión de la última actividad.
+- [x] Alertar y etiquetar cuentas con gastos pero sin producción entregada.
+- [x] Añadir filtro `sin_produccion=1` y ampliar el CSV.
+- [x] Hacer que Dashboard, PDF, CSV y comando consuman la misma conciliación.
+- [x] Corregir el importador para buscar por `cosechero + cosecha + sábado`.
+- [x] Documentar siete avances huérfanos sin inferir ni modificar su cosecha.
+- [x] Añadir pruebas de universo, Decimal, actividad, paridad y consultas constantes.
+
+**Evidencia productiva antes → después**:
+
+| Cosecha | Universo anterior | Universo completo | Sin entregas |
+|---|---:|---:|---:|
+| 2023-2024 | 43 | 49 | 6 |
+| 2024-2025 | 60 | 74 | 14 |
+| 2025-2026 | 0 | 71 | 71 |
+
+Esta fase no agrega modelos ni migraciones y no modifica datos históricos. Su rollback consiste en volver al commit anterior del código.
+
+**Commit de implementación**: `e22cb74` (`feat: completar universo financiero por cosecha`).
+
+Validación final: `manage.py check` sin hallazgos, migraciones sin pendientes, Tailwind compilado, `collectstatic` correcto, 20 pruebas aprobadas y smoke autenticado `200` en Dashboard, filtro, CSV y PDF. Los puntos que exigen hardware real no se consideran verificados hasta probar la impresora conectada.
 
 ## Por qué existe este documento
 
@@ -61,22 +88,22 @@ Cada tarea cita `archivo:línea` como estaba en la auditoría — verificar que 
 
 **Objetivo**: atacar directamente la queja explícita del usuario sobre lentitud al registrar facturas y cheques. Requiere tocar `ventas_form.html` y su JS de forma más profunda que la Fase 0.
 
-- [ ] **Reemplazar el selector de cosechero.** Hoy (`ventas_form.html:59-73`) se renderiza server-side un `<button>` por cada cosechero activo, y el filtro de búsqueda re-evalúa un `x-show` de tipo "string includes" contra **todos** los botones en cada tecla — sin AJAX, sin debounce, sin límite de resultados. El propio archivo ya tiene el patrón correcto para artículos: un array en memoria + `articulosFiltrados` como getter, capado a 6 resultados visibles. Aplicar el mismo patrón al selector de cosechero.
+- [x] **Reemplazar el selector de cosechero.** *(Resuelto — 2026-08-08: búsqueda normalizada en memoria, máximo de ocho resultados.)* Antes se renderizaba server-side un botón por cada cosechero activo.
   **Métrica**: latencia de tecla-a-render objetivo <50ms independiente del número de cosecheros. Definir junto con el usuario un umbral (ej. >2000 cosecheros) a partir del cual convenga migrar a un endpoint de búsqueda con debounce en vez de array en memoria.
 
-- [ ] **Desacoplar el guardado de la impresión.** `_imprimir_ticket()` (`ventas/views.py:36-141`) abre la impresora térmica USB (`escpos.printer.Usb`) de forma síncrona **dentro** del POST de "Registrar e Imprimir". Si la impresora está apagada/desconectada, esto puede agregar latencia real antes de que el `try/except` silencioso deje pasar. Guardar y responder primero; disparar la impresión como una llamada aparte (fetch async) con estado visible "Imprimiendo…" y manejo de error explícito (hoy falla en silencio).
+- [x] **Desacoplar el guardado de la impresión.** *(Resuelto — 2026-08-08: el guardado responde primero y la impresión se solicita mediante un POST separado.)*
   **Métrica**: respuesta de "Guardar" <500ms sin importar el estado de la impresora.
 
-- [ ] **Preservar el carrito ante error de validación.** Si `procesar_venta` devuelve `success: False` (ej. inventario insuficiente), `registrar_venta` (`ventas/views.py:180-199`) re-renderiza la página desde un GET limpio — el estado del carrito vive solo en memoria de Alpine, así que se pierde todo y el usuario debe re-ingresar. Opciones: (a) convertir el submit a AJAX y mantener el componente Alpine vivo, mostrando el error sin recargar la página; o (b) persistir el carrito en `localStorage` como red de seguridad.
+- [x] **Preservar el carrito ante error de validación.** *(Resuelto — 2026-08-08: captura AJAX, errores inline y borrador en `sessionStorage` por 24 horas.)*
   **Métrica**: 0 pérdidas de datos ingresados ante error de validación.
 
-- [ ] **Hacer visible el cierre semanal automático.** `proximo_sabado()` desplaza silenciosamente la fecha de venta al sábado más próximo (`ventas/services.py:31-39`), y una venta nueva del mismo cosechero en la misma semana **se fusiona** con la existente (`obtener_venta_existente`) en vez de crear una nueva — pero la fecha que el usuario ve en el formulario no es necesariamente la que se guarda. Mostrar en el formulario, antes de enviar, algo como "Esto se registrará en el ticket semanal que cierra el sábado [fecha], total acumulado hasta ahora: [monto]".
+- [x] **Hacer visible el cierre semanal automático.** *(Resuelto — 2026-08-08: tarjeta de resumen con sábado, ticket y total acumulado.)*
   **Métrica**: cualitativa — confirmar con el usuario/cajeros que dejan de reportar confusión sobre la fecha del ticket.
 
-- [ ] **Alta rápida de cosechero/artículo faltante sin salir del ticket en progreso.** Hoy, si falta un cosechero o artículo, hay que abandonar la venta en curso, ir al módulo correspondiente, crearlo, y volver (perdiendo el carrito por el punto anterior). Agregar un modal de "alta rápida" reutilizable desde `ventas_form.html`. Depende de que exista una vista de creación real para `Cosechero` (ver Fase 2).
+- [x] **Alta rápida de cosechero/artículo faltante sin salir del ticket en progreso.** *(Resuelto — 2026-08-08: modales operativos que conservan el borrador.)*
   **Métrica**: de ~5+ navegaciones de página a 1 modal para el caso de "cosechero nuevo a mitad de venta".
 
-- [ ] **Paginar y filtrar `tickets.html`.** `get_tickets` (`ventas/views.py:206-226`) trae todas las ventas activas sin límite; el template las renderiza todas en el DOM y solo oculta con `x-show` para el buscador de texto. El único filtro server-side es por cosecha (recarga completa de página). Agregar `Paginator` + filtro por rango de fecha y por cosechero.
+- [x] **Paginar y filtrar `tickets.html`.** *(Resuelto — 2026-08-08: paginación de 50 y filtros server-side por cosecha, cosechero y fechas.)*
   **Métrica**: tamaño de página acotado (ej. 50 filas) sin importar cuánto crezca el histórico.
 
 ---
@@ -87,8 +114,8 @@ Cada tarea cita `archivo:línea` como estaba en la auditoría — verificar que 
 
 - [x] **Migrar `cosecheros/templates/index.html`.** *(Hecho — 2026-08-08)* Se reemplazó Bootstrap por Tailwind/Alpine, se eliminó el modal repetido por cada cosechero y se agregó un único modal reutilizable. El listado ahora tiene búsqueda server-side por nombre/cédula/teléfono y paginación de 25 filas. En la verificación con datos locales, la respuesta bajó de ~440 KB a ~104 KB.
 - [x] **Migrar `compra/templates/compras_form.html`.** *(Hecho — 2026-08-08)* Se reemplazó Bootstrap y el armado imperativo de filas por una pantalla Tailwind/Alpine responsive con estados de carga/error, totales de costo y venta sugerida, validación visible y guard contra doble envío. La carga de artículos conserva el contrato existente por proveedor y el guardado continúa generando los lotes FIFO.
-- [ ] **Dar a `cosecheros` un CRUD real en UI.** Hoy la única forma de crear/editar un cosechero es Django Admin (`cosecheros/admin.py`, registro plano sin `search_fields`/`list_filter`). Esto es además **prerrequisito** de la alta rápida de la Fase 1, y de que el matching automático de cuenta bancaria en el import masivo de `avance` tenga datos confiables para trabajar.
-- [ ] **Decidir con el usuario el destino de `proveedor` y `articulo`.** Hoy no tienen ni `urls.py` ni vistas reales — son solo modelos consumidos por `compra`. Confirmar si eso es intencional (gestión solo vía admin) o si necesitan una UI propia, y documentar la decisión en `ARQUITECTURA.md`.
+- [x] **Dar a `cosecheros` un CRUD real en UI.** *(Resuelto — 2026-08-08: CRUD Tailwind con soft-delete y alta rápida.)*
+- [x] **Decidir con el usuario el destino de `proveedor` y `articulo`.** *(Resuelto — 2026-08-08: ambos tienen CRUD visual; proveedores se crean en su pantalla dedicada.)*
 
 **Métrica de fase**: 100% de las cuatro apps con pantallas operativas propias están en Tailwind (`ventas`, `avance`, `cosecheros`, `compra`). El grep de clases Bootstrap remanentes en esos templates da 0 coincidencias.
 
@@ -98,20 +125,20 @@ Cada tarea cita `archivo:línea` como estaba en la auditoría — verificar que 
 
 **Objetivo**: cerrar bugs latentes encontrados durante la auditoría. No están directamente ligados a la lentitud reportada, pero son riesgos de integridad de datos que conviene resolver antes de que se manifiesten en producción. Puede correr en paralelo a la Fase 2.
 
-- [ ] **`Cosechero.numero_cuenta_banco`** — `CharField(unique=True, blank=True)`. Si dos cosecheros quedan con este campo vacío, el segundo guardado revienta con `IntegrityError`. Cambiar a `null=True` y normalizar `''` → `None` al guardar, o agregar una validación explícita.
-- [ ] **Validador de cédula** (`cosecheros/models.py`) — agregar un guard `isdigit()`/regex antes de indexar el string, para dar un error de validación claro en vez de un fallo interno con input no numérico.
-- [ ] **Filtro invertido en `cosecheros/utils/reportes.py`** — el comentario dice "solo los que dan positivo" pero el código filtra `saldo < 0`. **No cambiar sin confirmar antes con el usuario** cuál es la regla de negocio correcta — podría ser el comentario el equivocado, no el código.
+- [x] **`Cosechero.numero_cuenta_banco`.** *(Resuelto — 2026-08-08: los valores vacíos se normalizan a `NULL`.)*
+- [x] **Validador de cédula.** *(Resuelto — 2026-08-08: rechaza caracteres no numéricos con validación clara.)*
+- [x] **Filtro de saldos en reportes.** *(Resuelto — 2026-07-19: la conciliación expone ambos grupos y evita depender de un signo ambiguo.)*
 - [x] **Completar el flujo de login.** *(Hecho — 2026-08-08)* Se agregó `/accounts/login/` con una pantalla Tailwind local, redirecciones de login/logout y protección coherente de dashboard, cosecheros, reportes, precios, ventas, avances y compras. Ya no es necesario iniciar sesión indirectamente a través de `/admin/`.
-- [ ] **De-duplicar `proximo_sabado()`** entre `avance/services.py` y `ventas/services.py` — moverla a un módulo compartido.
+- [x] **De-duplicar `proximo_sabado()`.** *(Resuelto — 2026-08-08: centralizado en `app/fechas.py`.)*
 - [x] **De-duplicar la tabla `PRECIOS_VARIEDAD`.** *(Hecho — 2026-07-19, alcance ampliado: ver "Precios dinámicos por cosecha" más abajo)*
 - [x] **Filtro invertido de saldo en `resumen_perdidas_cosecha`.** *(Resuelto — 2026-07-19: el comando ahora muestra ambos grupos, "nos deben" y "les debemos", en vez de filtrar por un signo — ver nota abajo)*
-- [ ] **Higiene de producción (a futuro, antes de cualquier despliegue fuera de LAN)**: `DEBUG=True`, `SECRET_KEY` hardcodeada, `ALLOWED_HOSTS=['*', '192.168.43.90']` en `app/settings.py`.
+- [x] **Higiene de producción.** *(Resuelto en código — 2026-08-08: secretos, `DEBUG`, hosts y rutas sensibles se leen desde entorno; al salir de la LAN deberán definirse los valores del despliegue.)*
 
 ### Precios dinámicos por cosecha (2026-07-19)
 
 A pedido del usuario, se resolvió con más alcance del que originalmente preveía la Fase 3: los precios de tabaco ya no son un dict hardcodeado, sino el modelo `PrecioVariedadCosecha` (una fila por variedad, 7 columnas de precio, con historial por cosecha) — ver `docs/ARQUITECTURA.md` §4.1. Incluye página Tailwind de gestión (`/cosecheros/precios/`), copia automática de precios al abrir una cosecha nueva, y consolidación de toda la lógica de tara/producción/saldo (antes duplicada entre `cosecheros/views.py` y `cosecheros/utils/reportes.py`) en un único `cosecheros/services.py`.
 
-Pendiente para el futuro (no incluido en este trabajo): un dashboard o generador de reportes dinámico para ver de un vistazo, sin PDF ni línea de comandos, cuánto se debe a cada cosechero y cuánto debe cada uno — el usuario lo mencionó como la necesidad real detrás del comando `resumen_perdidas_cosecha`.
+Este pendiente quedó resuelto por las fases de Dashboard financiero y universo completo: la pantalla principal muestra ambos grupos por cosecha y comparte la conciliación con PDF, CSV y línea de comandos.
 
 ---
 
@@ -123,7 +150,7 @@ Pendiente para el futuro (no incluido en este trabajo): un dashboard o generador
 | Queries en POST de un ticket de 5 artículos + 2 cheques | Igual que arriba | ~22 (estimado) | ~8 |
 | Tiempo de respuesta de "Guardar" | Medición manual o logging de duración de request | Incluye I/O de impresora si aplica | <500ms, independiente del estado de la impresora |
 | Recargas de página por sesión de captura múltiple (varios cosecheros seguidos) | Conteo manual / analítica de navegación | 1 recarga completa por ticket | Minimizar recargas necesarias para el flujo "siguiente cosechero" |
-| % de templates migrados a Tailwind | Grep de clases Bootstrap remanentes | 4 de 4 apps con UI operativa (`ventas`, `avance`, `cosecheros`, `compra`) | Cumplido; decidir aparte si `proveedor`/`articulo` tendrán UI propia |
-| Bugs de correctness abiertos (Fase 3) | Checklist de este documento | 7 identificados | 0 (3 resueltos al 2026-08-08, 4 abiertos) |
+| % de templates migrados a Tailwind | Grep de clases Bootstrap remanentes | 4 de 4 apps operativas originales | Cumplido; `proveedor` y `articulo` también tienen CRUD visual |
+| Bugs de correctness abiertos (Fase 3) | Checklist de este documento | 7 identificados | 0; las decisiones contables futuras se mantienen separadas de los bugs |
 
-**Sugerencia de instrumentación**: instalar `django-debug-toolbar` en desarrollo antes de empezar la Fase 0, para tener una línea base real de queries por vista en vez de solo la estimación de la auditoría de código.
+**Instrumentación vigente**: mantener pruebas `assertNumQueries` para los servicios críticos; el universo financiero se valida con seis consultas constantes.

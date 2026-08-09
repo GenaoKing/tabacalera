@@ -60,3 +60,11 @@ La restauración elimina todos los movimientos posteriores a la fecha del BAK; p
 ## Configuración local
 
 La configuración sensible vive en `.env`, ignorado por Git. `.env.example` documenta todas las variables. Cambiar `DJANGO_SECRET_KEY` invalida las sesiones existentes y requiere volver a iniciar sesión. El portal usa la zona horaria `America/Santo_Domingo`.
+
+## Despliegue del universo financiero completo
+
+- No contiene migraciones ni modifica filas productivas.
+- Antes de reiniciar, ejecutar `manage.py check`, `makemigrations --check --dry-run`, la suite completa y `npm run build`.
+- Verificar los conteos esperados 49, 74 y 71 para las cosechas 2023-2024, 2024-2025 y 2025-2026.
+- Confirmar que los siete avances de `INCIDENCIAS_DATOS.md` permanezcan sin `DetalleAvance` y fuera de los totales.
+- Rollback: detener Django, volver al commit inmediatamente anterior de esta fase y reiniciar. No se restaura base porque no hay cambio de esquema ni datos.

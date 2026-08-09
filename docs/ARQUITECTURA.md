@@ -39,7 +39,7 @@ Cada envío nuevo queda auditado en `OperacionVenta`, con UUID idempotente, usua
 - Ventas usa AJAX, errores inline, borrador por pestaña/usuario con expiración de 24 horas y resumen semanal previo al envío.
 - Tickets filtra y pagina 50 filas en servidor; la impresión solo acepta POST.
 - Cosecheros, artículos y proveedores cuentan con CRUD operativo Tailwind y desactivación lógica.
-- Dashboard calcula los dos lados de la conciliación por cosecha y exporta CSV sin persistir otro saldo.
+- Dashboard calcula el universo completo por cosecha —entregas o ventas activas—, alerta cuentas sin producción, muestra última actividad y exporta CSV sin persistir otro saldo.
 - `proximo_sabado()` vive en `app/business_dates.py`.
 - Configuración sensible y rutas locales se leen desde `.env`; el repositorio solo conserva `.env.example`.
 - Tailwind y Alpine son locales; no hay dependencia de fuentes web y existe favicon local.
@@ -55,7 +55,7 @@ El flujo implementado actualmente es:
 
 ## 2. Stack técnico
 
-- **Backend**: Django 4.1, Python. Vistas "delgadas" que delegan a `services.py` por app (patrón ya establecido en `ventas` y `avance` — seguirlo al tocar otras apps).
+- **Backend**: Django 4.2, Python 3.11. Vistas delgadas que delegan la lógica de dominio a `services.py`.
 - **Base de datos**: MSSQL vía `django-mssql-backend` (`app/settings.py:87-98`), ODBC Driver 17, Windows Trusted Connection, host `DESKTOP-VGQEGRL`. Hay un `db.sqlite3` de 0 bytes en la raíz — residual, no se usa.
 - **Estáticos**: WhiteNoise (`CompressedManifestStaticFilesStorage`) — no hay servidor web aparte sirviendo estáticos.
 - **Frontend**: Tailwind CSS 3 + Alpine.js 3, sin framework de estado global — cada página tiene su propio componente `x-data`. **No** se usa `django-tailwind`; es un pipeline npm manual:
@@ -64,22 +64,20 @@ El flujo implementado actualmente es:
   - `npm run copy-alpine` copia Alpine desde `node_modules` a `static/js/alpine.min.js` (servido local, no CDN).
   - `npm run setup` corre todo lo anterior de una — usar esto en un clon nuevo del repo.
   - `tailwind.config.js`: escanea `./*/templates/**/*.html` + `./app/templates/**/*.html`; paleta custom `tobacco` (marrón/naranja); fuentes DM Sans (display/body) + JetBrains Mono; plugin `@tailwindcss/forms`. **No hay `dark:` variant configurado** — el tema oscuro está hardcodeado con clases `bg-slate-900/950`, no hay modo claro.
-- **Impresión**: tickets se imprimen en una impresora térmica USB vía `escpos.printer.Usb`, de forma síncrona dentro del request (ver Plan de Mejora, Fase 1).
+- **Impresión**: el guardado responde primero y un POST independiente intenta imprimir el ticket semanal completo vía `escpos.printer.Usb`; una falla USB no revierte la venta.
 - **Reportes**: PDFs de cosechero generados con ReportLab (`cosecheros/views.py` arma el documento; toda la lógica de cálculo —tara, precios, saldos— vive en `cosecheros/services.py`, única fuente de verdad; `cosecheros/utils/reportes.py` ya no existe, se consolidó ahí).
 
 ## 3. Mapa de apps
 
 | App | Rol | Rutas (`app/urls.py`) | Estado de migración Tailwind |
 |---|---|---|---|
-| `dashboard` | Landing/home. `models.py` vacío. | `/` | N/A (solo usa `base.html`) |
+| `dashboard` | Conciliación financiera completa por cosecha, alertas y CSV. | `/` | ✅ Tailwind |
 | `cosecheros` | Productores, temporadas de cosecha, entregas de tabaco por grado, precios por variedad/cosecha. PDFs de resumen por cosechero. | `/cosecheros/` | ✅ Migrado |
 | `avance` | Avances/cheques a cosecheros — hoy solo vía **import masivo** CSV/XLSX. | `/avances/` | ✅ Migrado |
-| `proveedor` | Registro de proveedores. | — (sin `urls.py`) | N/A (sin templates/views reales) |
-| `articulo` | Catálogo de insumos agrícolas, ligados a un proveedor. | — (sin `urls.py`) | N/A (sin templates/views reales) |
+| `proveedor` | CRUD operativo de proveedores. | `/proveedores/` | ✅ Tailwind |
+| `articulo` | CRUD y altas rápidas de insumos ligados a proveedor. | `/articulos/` | ✅ Tailwind |
 | `compra` | Compras de artículos a proveedores; inventario FIFO por lote (`DetalleCompra.cantidad_restante`). | `/compra/` | ✅ Migrado |
 | `ventas` | App central: registro de ventas/tickets semanales (artículos + avances), listado de tickets, impresión. | `/ventas/` | ✅ Migrado |
-
-`proveedor` y `articulo` no tienen ni `urls.py` ni vistas reales (`views.py` son stubs) — hoy solo existen como modelos consumidos por `compra`. Esto es una decisión a confirmar con el usuario en la Fase 2 del plan de mejora: ¿se quedan solo-admin o necesitan UI propia?
 
 ## 4. Modelos y relaciones
 
@@ -120,6 +118,22 @@ Antes estos precios eran un diccionario (`PRECIOS_VARIEDAD`) **hardcodeado y dup
 - **Gestión**: página Tailwind `cosecheros/templates/precios.html` (`/cosecheros/precios/`, nombre de URL `precios`) — selector de cosecha, grilla de 6 variedades × 7 precios, guardar y clonar. También registrado en el admin (`PrecioVariedadCosecha`, con `list_filter`/`list_editable`) como respaldo para edición masiva.
 - **Precio faltante**: si una variedad no tiene precio cargado para la cosecha, el PDF lo señala explícitamente en vez de fallar (`KeyError` antes de este cambio).
 
+### 4.2 Universo y conciliación financiera
+
+`calcular_resumenes_cosecha()` es la fuente única para Dashboard, CSV, PDF individual y comando de conciliación. Acepta una cosecha y, opcionalmente, un subconjunto de cosecheros para reutilizar la misma regla sin calcular toda la temporada en un PDF individual.
+
+El universo es la unión de:
+
+- cosecheros con una `EntregaTabaco` en la cosecha;
+- cosecheros con una `Venta.is_active=True` en la cosecha;
+- avances vinculados por `DetalleAvance`, que ya quedan incluidos mediante su venta.
+
+Un `Avance` aislado no tiene cosecha y no se infiere por fecha. Los siete casos históricos conocidos están en `INCIDENCIAS_DATOS.md` y permanecen fuera del cálculo hasta revisión manual.
+
+Por cada cosechero se calculan en `Decimal`: artículos, avances desde `DetalleAvance.monto`, gastos, producción y `saldo = gastos - producción`. También se exponen cantidad de entregas, entregas sin precio, indicador sin producción y última actividad.
+
+La fecha de actividad es operativa. Entregas y avances tienen fecha exacta; artículos nuevos usan `OperacionVenta.fecha_movimiento`; artículos históricos sin operación usan `Venta.fecha_venta` con precisión `cierre_semanal`. Si coinciden fuentes exactas e históricas, la precisión es `mixta`.
+
 ## 5. Los dos caminos para crear un "cheque" (`Avance`)
 
 Esto no es obvio navegando el sidebar, así que vale la pena documentarlo explícitamente:
@@ -127,7 +141,7 @@ Esto no es obvio navegando el sidebar, así que vale la pena documentarlo explí
 | Camino | Dónde | Para qué sirve |
 |---|---|---|
 | **A. Import masivo** | `avance/` → `/avances/` (`upload.html`, wizard de 3 pasos: subir → previsualizar/corregir → confirmar) | Cargar muchos avances de una vez desde un export bancario (CSV/XLSX de cheques, depósitos o pagos en efectivo) |
-| **B. Entrada individual** | Dentro de `ventas/templates/ventas_form.html`, modal "Nuevo Avance" | El flujo diario: mientras se registra una venta a un cosechero, se agrega un cheque/depósito/efectivo puntual como parte de esa misma venta |
+| **B. Entrada individual** | Dentro de `ventas/templates/ventas_form_v2.html`, modal "Nuevo Avance" | El flujo diario: mientras se registra una venta a un cosechero, se agrega un cheque/depósito/efectivo puntual como parte de esa misma venta |
 
 **La app `avance` en sí no tiene ninguna vista para crear/editar/listar un `Avance` individual** — solo el wizard de import masivo. Lo que el usuario probablemente tiene en mente cuando dice "la creación de cheques es lenta" es el camino B (el modal dentro de `ventas_form.html`), que comparte toda la infraestructura (y por lo tanto los mismos problemas de rendimiento) del registro de ventas — ver `PLAN_MEJORA.md`.
 
@@ -139,12 +153,11 @@ Registradas aquí para que no se vuelvan a introducir ni se pierda el rastro de 
 
 **Aún abiertas:**
 
-- **`proximo_sabado()`** duplicada, copy-paste idéntico entre `avance/services.py` y `ventas/services.py` — mismo docstring, misma lógica, dos lugares para desincronizarse.
-- **`Cosechero.numero_cuenta_banco`** es `CharField(unique=True, blank=True)` — el clásico footgun de Django: si dos cosecheros se guardan con este campo vacío (`''` en vez de `None`), el segundo guardado revienta con `IntegrityError` en MSSQL.
-- **Validador de cédula** (`cosecheros/models.py`) indexa el string (`cedula[0:3]`, etc.) sin verificar primero que sea numérico — puede romper con un input no numérico en vez de dar un mensaje de validación claro.
-- **Login (resuelto 2026-08-08)**: `/accounts/login/` usa el sistema de autenticación de Django con una pantalla Tailwind propia. Dashboard y todas las pantallas operativas requieren sesión; logout regresa al login. `/admin/` conserva su acceso independiente para administración.
-- **Configuración de desarrollo expuesta**: `DEBUG=True`, `SECRET_KEY` hardcodeada, `ALLOWED_HOSTS=['*', '192.168.43.90']` en `app/settings.py` — normal para desarrollo en LAN, pero hay que revisarlo antes de cualquier exposición fuera de la red local.
-- **Dashboard/reportes dinámicos de saldos**: el usuario mencionó querer, a futuro, un dashboard o generador de reportes dinámico para ver de un vistazo cuánto se debe a cada cosechero y cuánto debe cada uno (hoy solo existe vía PDF individual o el comando `resumen_perdidas_cosecha` por línea de comandos). Anotado como evolución futura, fuera del alcance de los cambios de precios dinámicos.
+- Resolver manualmente los siete avances sin venta/cosecha registrados en `INCIDENCIAS_DATOS.md`.
+- Definir el efecto contable de estados futuros `nulo` y `cambiado` en avances.
+- Formalizar si el redondeo monetario se hace por detalle, agrupación o total.
+- Incorporar al dashboard un historial desplegable de `OperacionVenta` cuando la operación lo requiera.
+- La validación física de la impresora USB sigue pendiente por decisión operativa; el fallo lógico está probado y no revierte ventas.
 
 ## 7. Convenciones a seguir al escribir código nuevo
 
