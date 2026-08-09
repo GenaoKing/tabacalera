@@ -17,6 +17,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from app.branding import get_brand_logo_path
 from app.business_dates import proximo_sabado
 from articulo.models import Articulo
 from cosecheros.models import Cosechero, Cosecha
@@ -46,7 +47,7 @@ def _imprimir_ticket(request, venta: Venta):
 
         VID = 0x1FC9
         PID = 0x2016
-        logo = Image.open("logo.png")
+        logo = Image.open(get_brand_logo_path())
 
         p = Usb(idVendor=VID, idProduct=PID)
 

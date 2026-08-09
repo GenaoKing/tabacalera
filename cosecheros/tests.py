@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles import finders
 from django.test import TestCase
 from django.urls import reverse
 
@@ -14,6 +15,7 @@ from ventas.models import DetalleArticulo, DetalleAvance, OperacionVenta, Venta
 
 from .models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
 from .services import calcular_resumenes_cosecha
+from app.branding import BRAND_LOGO_STATIC, get_brand_logo_path
 
 
 class UniversoFinancieroTests(TestCase):
@@ -254,3 +256,24 @@ class UniversoFinancieroTests(TestCase):
         ))
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta['Content-Type'], 'application/pdf')
+
+
+class IdentidadVisualTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_user('marca', password='prueba')
+
+    def test_logo_corporativo_esta_disponible_en_portal_login_y_admin(self):
+        logo_path = get_brand_logo_path()
+        self.assertTrue(logo_path.exists())
+        self.assertEqual(finders.find(BRAND_LOGO_STATIC), str(logo_path))
+
+        login = self.client.get(reverse('login'))
+        self.assertContains(login, '/static/img/tabacalera-genao-logo.png', count=2)
+
+        self.client.force_login(self.usuario)
+        portal = self.client.get(reverse('dashboard'))
+        self.assertContains(portal, '/static/img/tabacalera-genao-logo.png', count=2)
+
+        admin_login = self.client.get('/admin/login/')
+        self.assertContains(admin_login, '/static/img/tabacalera-genao-logo.png')

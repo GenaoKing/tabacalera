@@ -20,6 +20,10 @@ from django.contrib.auth.views import LoginView, LogoutView
 
 from .forms import PortalAuthenticationForm
 
+admin.site.site_header = "Tabacalera Genao — Administración"
+admin.site.site_title = "Tabacalera Genao"
+admin.site.index_title = "Soporte técnico"
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path(

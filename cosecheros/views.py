@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 from urllib.parse import urlencode
 
+from app.branding import get_brand_logo_path
 from cosecheros.forms import CosecheroForm, EntregaTabacoForm
 from cosecheros.models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
 from cosecheros.services import (
@@ -40,8 +41,15 @@ from reportlab.pdfgen.canvas import Canvas
 def encabezado_pie(canvas, doc):
     width, height = letter
     # Encabezado
-    logo_width, logo_height = 160, 100
-    canvas.drawImage("logo.png", width - logo_width - 72, height - 36 - logo_height, width=logo_width, height=logo_height, mask='auto')
+    logo_width, logo_height = 100, 100
+    canvas.drawImage(
+        str(get_brand_logo_path()),
+        width - logo_width - 72,
+        height - 36 - logo_height,
+        width=logo_width,
+        height=logo_height,
+        mask='auto',
+    )
 
     # Información de la empresa
     canvas.setFont("Helvetica-Bold", 10)

@@ -1,0 +1,20 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | Tabacalera Genao{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="icon" href="{% static 'img/tabacalera-genao-logo.png' %}" type="image/png">
+{% endblock %}
+
+{% block branding %}
+<div id="site-name">
+  <a href="{% url 'admin:index' %}" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
+    <img src="{% static 'img/tabacalera-genao-logo.png' %}" alt="Logo de Tabacalera Genao" style="width:44px;height:44px;object-fit:contain;border-radius:50%;background:#fff;">
+    <span>Tabacalera Genao</span>
+  </a>
+</div>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
