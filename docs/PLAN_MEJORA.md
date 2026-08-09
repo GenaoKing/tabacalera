@@ -17,6 +17,20 @@
 | Universo financiero completo | Completada | `e22cb74`, unión de entregas y ventas, actividad operativa, flujo `Decimal`, incidencias y consultas constantes |
 | Indicadores por tarea y cosechero | Completada | `65394a2`, bloque individual con gasto, producción y quintales por tarea; protección sin terreno y CSV/PDF ampliados |
 | Identidad visual corporativa | Completada | `4e53cb2`, logo canónico en portal, login, favicon, Admin, PDF y ticket; rutas server-side centralizadas |
+| Soporte de correcciones de entregas | Completada | `13a5912`, `EntregaTabaco` visible y buscable en Admin; corrección 60117 auditada |
+
+## Fase 11 — Soporte de correcciones de entregas
+
+- [x] Verificar por ID la última entrega creada y ambos cosecheros involucrados.
+- [x] Corregir únicamente el propietario de `EntregaTabaco 60117` mediante una transacción validada.
+- [x] Registrar `EntregaTabaco` en Admin con búsqueda, filtros, fecha jerárquica y edición.
+- [x] Mejorar la búsqueda de cosecheros en Admin para soportar el selector autocompletado.
+- [x] Documentar el antes/después sin modificar otros campos de la entrega.
+- [x] Añadir prueba autenticada del listado y formulario de edición.
+
+No requiere migración. La única modificación productiva es el cambio solicitado de `cosechero_id` en la entrega `60117`.
+
+**Validación**: commit `13a5912`; 24 pruebas aprobadas, ninguna migración pendiente y verificación productiva `60117 → cosechero 20017`.
 
 ## Fase 10 — Identidad visual corporativa
 

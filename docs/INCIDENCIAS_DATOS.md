@@ -26,3 +26,13 @@ Existen siete filas activas de `Avance` que no tienen un `DetalleAvance`. Como `
 4. Regenerar Dashboard, CSV y PDF y registrar aquí la evidencia de la corrección.
 
 Hasta completar esos pasos, el dashboard, el CSV, el PDF y el comando de conciliación excluyen deliberadamente estas siete filas para evitar una asignación o duplicación incorrecta.
+
+## Correcciones manuales realizadas
+
+### Entrega 60117 — 2026-08-09
+
+- Solicitud: la última entrega creada había sido asignada por error a Luciano Andrés López (`Cosechero 50009`).
+- Verificación: `EntregaTabaco 60117`, fecha operativa 2026-06-29, cosecha 2025-2026, variedad Criollo 98.
+- Corrección: se cambió únicamente `cosechero_id` de `50009` a Víctor Paulino (`20017`) dentro de una transacción con bloqueo y comprobación del propietario anterior.
+- Permanecieron sin cambios la fecha, cosecha, variedad y todas las cantidades.
+- Verificación posterior: la fila `60117` pertenece a Víctor Paulino.

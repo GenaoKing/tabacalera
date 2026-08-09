@@ -67,6 +67,7 @@ El flujo implementado actualmente es:
 - **Impresión**: el guardado responde primero y un POST independiente intenta imprimir el ticket semanal completo vía `escpos.printer.Usb`; una falla USB no revierte la venta.
 - **Reportes**: PDFs de cosechero generados con ReportLab (`cosecheros/views.py` arma el documento; toda la lógica de cálculo —tara, precios, saldos— vive en `cosecheros/services.py`, única fuente de verdad; `cosecheros/utils/reportes.py` ya no existe, se consolidó ahí).
 - **Identidad visual**: el logo corporativo canónico vive en `static/img/tabacalera-genao-logo.png`. Portal, login, favicon y Django Admin lo cargan con `{% static %}`; PDF y ticket térmico resuelven la misma imagen mediante `app.branding.get_brand_logo_path()`, sin depender del directorio desde donde se inicie Django.
+- **Soporte de entregas**: `EntregaTabaco` está registrado en Django Admin con búsqueda por ID o cosechero, filtros por cosecha/variedad/fecha y edición del cosechero asociado. Se usa para correcciones auditadas excepcionales; la captura diaria continúa en la interfaz operativa.
 
 ## 3. Mapa de apps
 
