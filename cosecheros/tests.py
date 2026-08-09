@@ -137,10 +137,18 @@ class UniversoFinancieroTests(TestCase):
         self.assertEqual(filas[self.solo_avance.id]['gastos_avances'], Decimal('30.00'))
         self.assertEqual(filas[self.combinado.id]['gastos'], Decimal('15.0000'))
         self.assertEqual(filas[self.combinado.id]['produccion'], Decimal('100.000000'))
+        self.assertEqual(filas[self.solo_articulo.id]['gasto_promedio_tarea'], Decimal('25.0000'))
+        self.assertEqual(filas[self.solo_entrega.id]['produccion_promedio_tarea'], Decimal('100.000000'))
+        self.assertEqual(filas[self.solo_entrega.id]['quintales_producidos'], Decimal('10.00'))
+        self.assertEqual(filas[self.solo_entrega.id]['quintales_promedio_tarea'], Decimal('10.00'))
 
     def test_importes_son_decimal_y_huerfano_no_se_contabiliza(self):
         fila = self.filas()[self.solo_articulo.id]
-        for campo in ('gastos_articulos', 'gastos_avances', 'gastos', 'produccion', 'saldo'):
+        for campo in (
+            'gastos_articulos', 'gastos_avances', 'gastos', 'produccion', 'saldo',
+            'tareas_sembradas', 'gasto_promedio_tarea', 'produccion_promedio_tarea',
+            'quintales_producidos', 'quintales_promedio_tarea',
+        ):
             self.assertIsInstance(fila[campo], Decimal)
         self.assertEqual(fila['gastos_avances'], Decimal('0'))
         self.assertEqual(Decimal('0.1') + Decimal('0.2'), Decimal('0.3'))
@@ -185,23 +193,27 @@ class UniversoFinancieroTests(TestCase):
         with self.assertNumQueries(6):
             list(calcular_resumenes_cosecha(self.cosecha.id))
 
+    def test_quintales_usan_la_misma_tara_que_la_valorizacion(self):
+        entrega = EntregaTabaco.objects.get(cosechero=self.solo_entrega)
+        entrega.centro_largo = Decimal('10.50')
+        entrega.save(update_fields=['centro_largo'])
+
+        fila = self.filas()[self.solo_entrega.id]
+
+        self.assertEqual(fila['quintales_producidos'], Decimal('10.900'))
+        self.assertEqual(fila['produccion'], Decimal('109.0000'))
+
     def test_dashboard_alerta_filtro_y_csv_coinciden(self):
         respuesta = self.client.get(reverse('dashboard'), {'cosecha': self.cosecha.id})
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(len(respuesta.context['sin_produccion']), 2)
         self.assertEqual(respuesta.context['total_sin_produccion'], Decimal('55.0000'))
         self.assertEqual(respuesta.context['total_nos_deben'], Decimal('55.0000'))
-        self.assertEqual(respuesta.context['total_tareas'], Decimal('6.00'))
-        self.assertEqual(
-            respuesta.context['gasto_promedio_tarea'], Decimal('70.0000') / Decimal('6.00'),
-        )
-        self.assertEqual(
-            respuesta.context['produccion_promedio_tarea'],
-            Decimal('200.000000') / Decimal('6.00'),
-        )
         self.assertContains(respuesta, 'Sin producción entregada')
-        self.assertContains(respuesta, 'Gasto promedio por tarea')
-        self.assertContains(respuesta, 'Producción promedio por tarea')
+        self.assertContains(respuesta, 'Indicadores por tarea', count=2)
+        self.assertContains(respuesta, 'Gasto/tarea')
+        self.assertContains(respuesta, 'Producción/tarea')
+        self.assertContains(respuesta, 'Quintales/tarea')
 
         filtrada = self.client.get(reverse('dashboard'), {
             'cosecha': self.cosecha.id, 'sin_produccion': '1',
@@ -216,17 +228,25 @@ class UniversoFinancieroTests(TestCase):
         self.assertEqual(articulo_csv['Artículos'], '25.00')
         self.assertEqual(articulo_csv['Avances'], '0.00')
         self.assertEqual(articulo_csv['Sin producción entregada'], 'Sí')
+        self.assertEqual(articulo_csv['Tareas'], '1.00')
+        self.assertEqual(articulo_csv['Gasto por tarea'], '25.00')
+        self.assertEqual(articulo_csv['Producción por tarea'], '0.00')
+        self.assertEqual(articulo_csv['Quintales por tarea'], '0.00')
 
     def test_dashboard_no_divide_entre_cero_si_no_hay_tareas(self):
-        Cosechero.objects.update(terreno_sembrado=Decimal('0'))
+        Cosechero.objects.filter(pk=self.solo_articulo.id).update(terreno_sembrado=Decimal('0'))
 
         respuesta = self.client.get(reverse('dashboard'), {'cosecha': self.cosecha.id})
 
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.context['total_tareas'], Decimal('0'))
-        self.assertIsNone(respuesta.context['gasto_promedio_tarea'])
-        self.assertIsNone(respuesta.context['produccion_promedio_tarea'])
-        self.assertContains(respuesta, 'Sin datos de terreno', count=2)
+        fila = next(
+            item for item in respuesta.context['nos_deben']
+            if item['cosechero'].id == self.solo_articulo.id
+        )
+        self.assertIsNone(fila['gasto_promedio_tarea'])
+        self.assertIsNone(fila['produccion_promedio_tarea'])
+        self.assertIsNone(fila['quintales_promedio_tarea'])
+        self.assertContains(respuesta, 'Sin tareas registradas', count=1)
 
     def test_pdf_individual_se_genera_desde_el_resumen_comun(self):
         respuesta = self.client.get(reverse(

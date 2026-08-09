@@ -142,6 +142,11 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
         'gastos': Decimal('0'),
         'produccion': Decimal('0'),
         'saldo': Decimal('0'),
+        'tareas_sembradas': cosechero.terreno_sembrado,
+        'gasto_promedio_tarea': Decimal('0') if cosechero.terreno_sembrado > 0 else None,
+        'produccion_promedio_tarea': Decimal('0') if cosechero.terreno_sembrado > 0 else None,
+        'quintales_producidos': Decimal('0'),
+        'quintales_promedio_tarea': Decimal('0') if cosechero.terreno_sembrado > 0 else None,
     }
     detalles_articulos = DetalleArticulo.objects.filter(venta__in=ventas).select_related('articulo').order_by('articulo__descripcion')
 
@@ -255,6 +260,23 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
         ['Subtotal Avances:', f"${subtotal_avances:,.2f}"],
         ['Total Gasto:', f"${total_gasto:,.2f}"],
         ['Total Produccion:', f"${subtotal_entregas:,.2f}"],
+        ['Tareas sembradas:', f"{resumen_financiero['tareas_sembradas']:,.2f}"],
+        [
+            'Gasto por tarea:',
+            f"${resumen_financiero['gasto_promedio_tarea']:,.2f}"
+            if resumen_financiero['gasto_promedio_tarea'] is not None else 'Sin tareas',
+        ],
+        [
+            'Produccion por tarea:',
+            f"${resumen_financiero['produccion_promedio_tarea']:,.2f}"
+            if resumen_financiero['produccion_promedio_tarea'] is not None else 'Sin tareas',
+        ],
+        ['Quintales entregados:', f"{resumen_financiero['quintales_producidos']:,.2f} qq"],
+        [
+            'Quintales por tarea:',
+            f"{resumen_financiero['quintales_promedio_tarea']:,.2f} qq"
+            if resumen_financiero['quintales_promedio_tarea'] is not None else 'Sin tareas',
+        ],
         ['Total Gastos  - Total Produccion:', f"${total:,.2f}"],
     ]
     tabla_resumen = Table(resumen_data, colWidths=[usable_width * 0.6, usable_width * 0.4])

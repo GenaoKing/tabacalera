@@ -64,6 +64,8 @@ class Command(BaseCommand):
                     "cosecha_id", "cosechero_id", "cosechero_nombre",
                     "articulos", "avances", "gastos", "produccion", "saldo", "grupo",
                     "cantidad_entregas", "sin_produccion_entregada", "entregas_sin_precio",
+                    "tareas", "gasto_por_tarea", "produccion_por_tarea",
+                    "quintales_producidos", "quintales_por_tarea",
                     "ultima_actividad", "tipos_ultima_actividad", "precision_fecha",
                 ])
                 for r in resultados:
@@ -82,6 +84,11 @@ class Command(BaseCommand):
                         r['cantidad_entregas'],
                         'si' if r['sin_produccion_entregada'] else 'no',
                         r['entregas_sin_precio'],
+                        f"{r['tareas_sembradas']:.2f}",
+                        f"{r['gasto_promedio_tarea']:.2f}" if r['gasto_promedio_tarea'] is not None else '',
+                        f"{r['produccion_promedio_tarea']:.2f}" if r['produccion_promedio_tarea'] is not None else '',
+                        f"{r['quintales_producidos']:.2f}",
+                        f"{r['quintales_promedio_tarea']:.2f}" if r['quintales_promedio_tarea'] is not None else '',
                         r['ultima_actividad_fecha'].isoformat() if r['ultima_actividad_fecha'] else '',
                         '|'.join(r['ultima_actividad_tipos']),
                         r['ultima_actividad_precision'] or '',

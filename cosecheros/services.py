@@ -79,6 +79,16 @@ def calcular_produccion_entrega(entrega: EntregaTabaco, precio_variedad: PrecioV
     return {'lineas': lineas, 'subtotal': subtotal, 'sin_precio': False}
 
 
+def calcular_quintales_entrega(entrega: EntregaTabaco) -> Decimal:
+    """Suma la cantidad entregada usando el mismo ajuste de tara del reporte."""
+    total = Decimal('0')
+    for _, campo_entrega, _, multiplicador in CLASIFICACIONES:
+        cantidad = getattr(entrega, campo_entrega) or Decimal('0')
+        if cantidad > 0:
+            total += aplicar_tara(cantidad, multiplicador)
+    return total
+
+
 def calcular_produccion_total(cosechero: Cosechero, cosecha: Cosecha) -> Decimal:
     """Total $ de producción (entregas) de un cosechero en una cosecha."""
     precios = obtener_precios(cosecha)
@@ -175,6 +185,7 @@ def calcular_resumenes_cosecha(
     gastos_articulos: dict[int, Decimal] = {}
     gastos_avances: dict[int, Decimal] = {}
     produccion: dict[int, Decimal] = {}
+    quintales_producidos: dict[int, Decimal] = {}
     cantidad_entregas: dict[int, int] = {}
     entregas_sin_precio: dict[int, int] = {}
     actividades: dict[int, list[tuple[date, str, str]]] = {}
@@ -189,6 +200,10 @@ def calcular_resumenes_cosecha(
         resultado = calcular_produccion_entrega(entrega, precios.get(entrega.variedad))
         produccion[cosechero_id] = (
             produccion.get(cosechero_id, Decimal('0')) + resultado['subtotal']
+        )
+        quintales_producidos[cosechero_id] = (
+            quintales_producidos.get(cosechero_id, Decimal('0'))
+            + calcular_quintales_entrega(entrega)
         )
         if resultado['sin_precio']:
             entregas_sin_precio[cosechero_id] = entregas_sin_precio.get(cosechero_id, 0) + 1
@@ -244,7 +259,9 @@ def calcular_resumenes_cosecha(
         avances = gastos_avances.get(cosechero_id, Decimal('0'))
         gastos = articulos + avances
         total_produccion = produccion.get(cosechero_id, Decimal('0'))
+        total_quintales = quintales_producidos.get(cosechero_id, Decimal('0'))
         numero_entregas = cantidad_entregas.get(cosechero_id, 0)
+        tareas = cosechero.terreno_sembrado
         fila = {
             'cosechero': cosechero,
             'gastos_articulos': articulos,
@@ -252,6 +269,11 @@ def calcular_resumenes_cosecha(
             'gastos': gastos,
             'produccion': total_produccion,
             'saldo': gastos - total_produccion,
+            'tareas_sembradas': tareas,
+            'gasto_promedio_tarea': gastos / tareas if tareas > 0 else None,
+            'produccion_promedio_tarea': total_produccion / tareas if tareas > 0 else None,
+            'quintales_producidos': total_quintales,
+            'quintales_promedio_tarea': total_quintales / tareas if tareas > 0 else None,
             'cantidad_entregas': numero_entregas,
             'sin_produccion_entregada': gastos > 0 and numero_entregas == 0,
             'entregas_sin_precio': entregas_sin_precio.get(cosechero_id, 0),
