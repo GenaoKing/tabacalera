@@ -15,21 +15,24 @@
 | Dashboard financiero | Completada | `7207a7c`, resumen por cosecha, grupos de saldo, PDF y CSV desde cálculo común |
 | Hardening | Completada en código | `fc2e197`, entorno, zona horaria, favicon, recursos locales; smoke autenticado correcto, pendiente impresora física |
 | Universo financiero completo | Completada | `e22cb74`, unión de entregas y ventas, actividad operativa, flujo `Decimal`, incidencias y consultas constantes |
-| Indicadores promedio por tarea | Completada | `dbfe259`, cards ponderados de gasto y producción, protección sin terreno y pruebas de presentación |
+| Indicadores por tarea y cosechero | Completada | `65394a2`, bloque individual con gasto, producción y quintales por tarea; protección sin terreno y CSV/PDF ampliados |
 
-## Fase 9 — Indicadores promedio por tarea
+## Fase 9 — Indicadores por tarea y cosechero
 
-- [x] Calcular gasto total y producción valorizada total desde el universo financiero completo.
-- [x] Dividir ambos totales entre la suma `Decimal` de tareas registradas en las fichas de los cosecheros del universo.
-- [x] Mantener los indicadores independientes de la búsqueda y del filtro “Sin producción”.
-- [x] Mostrar dos cards responsive con el denominador utilizado.
-- [x] Evitar división por cero y mostrar un estado explícito sin datos.
+- [x] Corregir la primera interpretación global registrada en `dbfe259`: el cálculo requerido es individual por cosechero.
+- [x] Dividir gastos y producción valorizada de cada cosechero entre sus propias tareas.
+- [x] Sumar sus quintales con la misma tara del reporte y calcular quintales por tarea.
+- [x] Mostrar un bloque compacto de tres indicadores dentro de cada fila del Dashboard.
+- [x] Ampliar CSV web y CSV del comando con tareas, razones y quintales.
+- [x] Evitar división por cero y mostrar un estado individual explícito.
 - [x] Documentar que el terreno actual no conserva historial por cosecha.
-- [x] Probar cifras, renderizado y caso sin tareas.
+- [x] Probar cifras, tara, renderizado, exportación y caso sin tareas.
 
 No hay migración ni cambio de datos. Como paso futuro, se evaluará guardar el terreno por `cosechero + cosecha` si la empresa necesita comparaciones históricas exactas entre temporadas.
 
-**Validación**: commit `dbfe259`; 21 pruebas aprobadas, `manage.py check` limpio, ninguna migración pendiente y Tailwind recompilado.
+La implementación inicial global quedó reemplazada por la interpretación individual confirmada por el usuario el 2026-08-09.
+
+**Validación final**: commit `65394a2`; 22 pruebas aprobadas, `manage.py check` limpio, ninguna migración pendiente, Tailwind recompilado y smoke autenticado del Dashboard/PDF.
 
 ## Fase 8 — Universo financiero completo por cosecha
 

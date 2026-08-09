@@ -132,9 +132,11 @@ Un `Avance` aislado no tiene cosecha y no se infiere por fecha. Los siete casos 
 
 Por cada cosechero se calculan en `Decimal`: artículos, avances desde `DetalleAvance.monto`, gastos, producción y `saldo = gastos - producción`. También se exponen cantidad de entregas, entregas sin precio, indicador sin producción y última actividad.
 
-El Dashboard agrega dos indicadores ponderados por terreno para el universo completo seleccionado: `gasto promedio por tarea = gastos totales / tareas totales` y `producción promedio por tarea = producción valorizada total / tareas totales`. El denominador suma `Cosechero.terreno_sembrado`, se mantiene en `Decimal` y no se calcula si la suma es cero. Las búsquedas y filtros visuales no cambian estos indicadores.
+Cada fila de cosechero en el Dashboard incluye un bloque de indicadores individuales: `gasto por tarea = gastos del cosechero / sus tareas`, `producción por tarea = producción valorizada del cosechero / sus tareas` y `quintales por tarea = quintales entregados por el cosechero / sus tareas`. No se calcula una razón global ni un promedio de razones entre cosecheros.
 
-Actualmente `terreno_sembrado` está en la ficha del cosechero y no conserva un valor distinto por cosecha. Por eso los indicadores históricos usan el terreno registrado actualmente. Si el área cambia entre temporadas, será necesario modelar el terreno por `cosechero + cosecha` antes de interpretar estos promedios como una serie histórica exacta.
+Los quintales se suman por clasificación aplicando la misma conversión de tara de `calcular_produccion_entrega()`, incluso si falta el precio de una variedad. Así, la cantidad física continúa visible aunque la producción monetaria tenga una incidencia de precio. Todos los cálculos permanecen en `Decimal`; si el cosechero tiene cero tareas, sus tres razones quedan sin calcular.
+
+Actualmente `terreno_sembrado` está en la ficha del cosechero y no conserva un valor distinto por cosecha. Por eso los indicadores individuales históricos usan el terreno registrado actualmente. Si el área cambia entre temporadas, será necesario modelar el terreno por `cosechero + cosecha` antes de interpretar estas razones como una serie histórica exacta.
 
 La fecha de actividad es operativa. Entregas y avances tienen fecha exacta; artículos nuevos usan `OperacionVenta.fecha_movimiento`; artículos históricos sin operación usan `Venta.fecha_venta` con precisión `cierre_semanal`. Si coinciden fuentes exactas e históricas, la precisión es `mixta`.
 

@@ -37,8 +37,9 @@
 - La alerta de cuentas sin producción forma parte del total y cantidad general de “Nos deben”.
 - La última actividad usa la fecha operativa: entrega, fecha real del avance u operación. Para artículos históricos sin `OperacionVenta`, usa el sábado de `Venta` y lo identifica como cierre semanal aproximado.
 - Todos los cálculos de dominio usan `Decimal`; la conversión a texto de dos decimales ocurre únicamente en la presentación o exportación.
-- Los promedios por tarea son ponderados: se divide el gasto o la producción total del universo completo entre la suma de `terreno_sembrado`; no se promedian ratios individuales ni se alteran al buscar o filtrar filas.
-- Si el total de tareas es cero, el Dashboard muestra “Sin datos de terreno” en lugar de dividir entre cero o presentar un cero engañoso.
+- Los indicadores por tarea son individuales por cosechero: sus gastos, su producción valorizada y sus quintales entregados se dividen entre su propio `terreno_sembrado`. No se presenta una razón global de toda la cosecha.
+- Los quintales usan la misma cantidad ajustada por tara que sirve para valorizar las entregas. Una entrega sin precio suma quintales aunque no sume producción monetaria.
+- Si un cosechero tiene cero tareas, su bloque muestra “Sin tareas registradas” en lugar de dividir entre cero o presentar un cero engañoso.
 - Los avances sin `DetalleAvance` no se asignan por rango de fecha ni se contabilizan automáticamente. Sus casos conocidos están en `INCIDENCIAS_DATOS.md`.
 - En la operación normal no se espera saldo exactamente cero; el servicio y CSV lo conservan defensivamente sin crear una tabla adicional.
 

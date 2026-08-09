@@ -68,3 +68,18 @@ La configuración sensible vive en `.env`, ignorado por Git. `.env.example` docu
 - Verificar los conteos esperados 49, 74 y 71 para las cosechas 2023-2024, 2024-2025 y 2025-2026.
 - Confirmar que los siete avances de `INCIDENCIAS_DATOS.md` permanezcan sin `DetalleAvance` y fuera de los totales.
 - Rollback: detener Django, volver al commit inmediatamente anterior de esta fase y reiniciar. No se restaura base porque no hay cambio de esquema ni datos.
+
+## Incidente local de base temporal — 2026-08-09
+
+Una ejecución de `manage.py test` agotó el tiempo del terminal mientras SQL Server creaba `test_Tabacalera`. El proceso Python hijo continuó activo y la base temporal quedó iniciando recuperación; las siguientes conexiones locales comenzaron a responder de forma intermitente.
+
+Evidencia y resolución:
+
+- `Tabacalera` permaneció `ONLINE`, `MULTI_USER` y `READ_WRITE`, sin sesiones de usuario ni transacciones abiertas.
+- Se detuvieron únicamente los procesos de prueba bloqueados y se eliminó `test_Tabacalera` después de confirmar que no tenía conexiones.
+- La suite volvió a crear y destruir correctamente la base temporal.
+- Ante la latencia residual de conexiones, se puso solamente `Tabacalera` offline/online con `ROLLBACK IMMEDIATE` cuando Django estaba detenido y no había sesiones activas.
+- `DBCC CHECKDB (N'Tabacalera') WITH PHYSICAL_ONLY, NO_INFOMSGS` terminó sin reportar errores.
+- No hubo migraciones, restauraciones, cambios de filas ni reinicio efectivo del servicio SQL Server.
+
+Si reaparece, no interrumpir repetidamente la creación de la base de pruebas. Identificar primero el PID exacto de `manage.py test`, comprobar conexiones a `test_Tabacalera` y actuar solo sobre esa base temporal. Nunca eliminar ni restaurar `Tabacalera` para resolver un bloqueo de pruebas.
