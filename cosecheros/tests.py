@@ -277,3 +277,38 @@ class IdentidadVisualTests(TestCase):
 
         admin_login = self.client.get('/admin/login/')
         self.assertContains(admin_login, '/static/img/tabacalera-genao-logo.png')
+
+
+class EntregaTabacoAdminTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = get_user_model().objects.create_superuser(
+            'admin_entregas', 'admin@example.com', 'prueba',
+        )
+        cls.cosecha = Cosecha.objects.create(
+            nombre='Admin 2026', fecha_inicio=date(2026, 1, 1), fecha_fin=date(2026, 12, 31),
+        )
+        cls.cosechero = Cosechero.objects.create(
+            nombre='Víctor', apellido='Admin', cedula='', numero_cuenta_banco=None,
+            direccion='Local', telefono='', terreno_sembrado=Decimal('10.00'),
+        )
+        cls.entrega = EntregaTabaco.objects.create(
+            cosechero=cls.cosechero, cosecha=cls.cosecha,
+            variedad='Criollo 98', fecha_entrega=date(2026, 6, 29),
+            centro_largo=Decimal('45.00'),
+        )
+
+    def test_entregas_se_pueden_buscar_y_editar_desde_admin(self):
+        self.client.force_login(self.admin)
+
+        listado = self.client.get(reverse('admin:cosecheros_entregatabaco_changelist'), {
+            'q': str(self.entrega.id),
+        })
+        edicion = self.client.get(reverse(
+            'admin:cosecheros_entregatabaco_change', args=[self.entrega.id],
+        ))
+
+        self.assertEqual(listado.status_code, 200)
+        self.assertContains(listado, self.cosechero.nombre)
+        self.assertEqual(edicion.status_code, 200)
+        self.assertContains(edicion, 'cosechero')
