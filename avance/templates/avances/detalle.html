@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block page_title %}Avance #{{ avance.id }}{% endblock %}
+{% block page_title_bar %}Detalle de avance{% endblock %}
+
+{% block content %}
+{% with vinculo=avance.vinculos.0 %}
+<div class="mx-auto max-w-4xl space-y-5">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div><a href="{% url 'avances' %}" class="text-sm text-slate-400 hover:text-white">← Volver a avances</a><h1 class="mt-3 text-2xl font-bold text-white">Avance #{{ avance.id }}</h1><p class="text-sm text-slate-400">{{ avance.cosechero }}</p></div>
+    <div class="flex flex-wrap gap-2">
+      {% if avance.is_active %}
+        {% if not vinculo %}<a href="{% url 'avance_vincular' avance.id %}" class="rounded-lg border border-amber-500/40 px-4 py-2 text-sm font-semibold text-amber-300">Vincular a cosecha</a>{% endif %}
+        {% if avance.vinculos|length <= 1 %}<a href="{% url 'avance_editar' avance.id %}" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Editar</a>{% endif %}
+        <form method="post" action="{% url 'avance_desactivar' avance.id %}" onsubmit="return confirm('¿Desactivar este avance y excluirlo de las cuentas?')">{% csrf_token %}<button class="rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-300">Desactivar</button></form>
+      {% else %}
+        <form method="post" action="{% url 'avance_restaurar' avance.id %}" onsubmit="return confirm('¿Restaurar este avance y reincorporarlo a las cuentas?')">{% csrf_token %}<button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Restaurar</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not avance.is_active %}<div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">Este avance está desactivado y no forma parte de los saldos, tickets ni reportes.</div>{% endif %}
+  {% if avance.vinculos|length > 1 %}<div class="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">Este avance aparece vinculado a más de un ticket. No debe editarse hasta completar una revisión técnica.</div>{% endif %}
+  {% if not vinculo %}<div class="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">Este avance no tiene cosecha ni ticket asociado. Permanece fuera de la contabilidad hasta vincularlo manualmente.</div>{% endif %}
+
+  <div class="grid gap-4 rounded-xl border border-slate-800 bg-slate-900/60 p-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div><p class="text-xs uppercase text-slate-500">Fecha real</p><p class="mt-1 text-sm font-medium text-white">{{ avance.fecha|date:'d/m/Y' }}</p></div>
+    <div><p class="text-xs uppercase text-slate-500">Tipo</p><p class="mt-1 text-sm font-medium text-white">{{ avance.get_tipo_avance_display }}</p></div>
+    <div><p class="text-xs uppercase text-slate-500">Número o referencia</p><p class="mt-1 text-sm font-medium text-white">{{ avance.numero|default:'—' }}</p></div>
+    <div><p class="text-xs uppercase text-slate-500">Monto</p><p class="mt-1 font-mono text-lg font-semibold text-emerald-400">RD$ {{ avance.monto_pagado|floatformat:2 }}</p></div>
+    <div><p class="text-xs uppercase text-slate-500">Estado documental</p><p class="mt-1 text-sm font-medium text-white">{{ avance.get_estado_display }}</p></div>
+    <div><p class="text-xs uppercase text-slate-500">Estado contable</p><p class="mt-1 text-sm font-medium {% if avance.is_active %}text-emerald-300{% else %}text-slate-400{% endif %}">{% if avance.is_active %}Activo{% else %}Desactivado{% endif %}</p></div>
+    <div class="sm:col-span-2 lg:col-span-3"><p class="text-xs uppercase text-slate-500">Descripción</p><p class="mt-1 whitespace-pre-line text-sm text-slate-300">{{ avance.descripcion|default:'—' }}</p></div>
+  </div>
+
+  {% if vinculo %}<div class="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><h2 class="font-semibold text-white">Cuenta semanal asociada</h2><div class="mt-4 grid gap-4 sm:grid-cols-3"><div><p class="text-xs uppercase text-slate-500">Cosecha</p><p class="mt-1 text-sm text-slate-300">{{ vinculo.venta.cosecha }}</p></div><div><p class="text-xs uppercase text-slate-500">Ticket</p><p class="mt-1 text-sm text-slate-300">#{{ vinculo.venta_id }}</p></div><div><p class="text-xs uppercase text-slate-500">Cierre semanal</p><p class="mt-1 text-sm text-slate-300">{{ vinculo.venta.fecha_venta|date:'d/m/Y' }}</p></div></div></div>{% endif %}
+</div>
+{% endwith %}
+{% endblock %}

@@ -653,3 +653,205 @@ def import_confirmed_rows(rows: list[dict], cosecha_id: int, descripcion_default
             )
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# CRUD operativo
+# ---------------------------------------------------------------------------
+
+def _datos_post_creacion(data: dict) -> dict:
+    """Adapta un avance individual al servicio idempotente de Venta."""
+    return {
+        'cosechero': str(data['cosechero'].pk),
+        'cosecha': str(data['cosecha'].pk),
+        'fecha_venta': data['fecha'].isoformat(),
+        'detalle_articulos-TOTAL_FORMS': '0',
+        'detalle_avances-TOTAL_FORMS': '1',
+        'detalle_avances-0-descripcion': data.get('descripcion') or '',
+        'detalle_avances-0-tipo_avance': data['tipo_avance'],
+        'detalle_avances-0-numero': data.get('numero') or '',
+        'detalle_avances-0-monto': str(data['monto_pagado']),
+        'detalle_avances-0-fecha': data['fecha'].isoformat(),
+        'detalle_avances-0-estado': data.get('estado') or 'realizado',
+    }
+
+
+def crear_avance_individual(data: dict, *, idempotency_key=None, usuario=None) -> dict:
+    """Crea un avance dentro de la cuenta semanal usando Venta segura."""
+    from ventas.services import procesar_venta
+
+    resultado = procesar_venta(
+        _datos_post_creacion(data),
+        imprimir=False,
+        idempotency_key=idempotency_key,
+        usuario=usuario,
+    )
+    if not resultado.get('success'):
+        return resultado
+
+    operacion = resultado['operacion']
+    detalle = operacion.detalles_avance.select_related('avance').first()
+    if detalle is None:
+        return {
+            'success': False,
+            'venta': resultado.get('venta'),
+            'errors': ['La operación no contiene el avance esperado.'],
+        }
+    resultado['avance'] = detalle.avance
+    return resultado
+
+
+def _bloquear_cuentas_semanales(claves: set[tuple[int, int, date]]) -> None:
+    """Adquiere applocks en orden estable para evitar interbloqueos."""
+    from ventas.services import _adquirir_bloqueo_semana
+
+    for cosechero_id, cosecha_id, fecha_sabado in sorted(claves):
+        _adquirir_bloqueo_semana(cosechero_id, cosecha_id, fecha_sabado)
+
+
+def _obtener_o_crear_venta(cosechero: Cosechero, cosecha: Cosecha, fecha: date) -> Venta:
+    from ventas.services import obtener_venta_existente
+
+    fecha_sabado = proximo_sabado(fecha)
+    venta = obtener_venta_existente(cosechero.pk, cosecha.pk, fecha_sabado)
+    if venta is None:
+        venta = Venta.objects.create(
+            cosechero=cosechero,
+            cosecha=cosecha,
+            fecha_venta=fecha_sabado,
+            total=Decimal('0'),
+            impreso=False,
+        )
+    return venta
+
+
+def _recalcular_ventas(*ventas: Optional[Venta]) -> None:
+    vistas: set[int] = set()
+    for venta in ventas:
+        if venta is None or venta.pk in vistas:
+            continue
+        vistas.add(venta.pk)
+        venta.update_total()
+        if venta.impreso:
+            venta.impreso = False
+            venta.save(update_fields=['impreso'])
+
+
+@transaction.atomic
+def actualizar_avance(avance_id: int, data: dict) -> Avance:
+    """Edita un avance y mueve su cargo si cambió la cuenta semanal."""
+    avance = Avance.objects.select_for_update().select_related('cosechero').get(pk=avance_id)
+    if not avance.is_active:
+        raise ValueError('Restaure el avance antes de editarlo.')
+
+    detalles = list(
+        DetalleAvance.objects.select_for_update()
+        .select_related('venta__cosecha', 'venta__cosechero')
+        .filter(avance=avance)
+        .order_by('id')[:2]
+    )
+    if len(detalles) > 1:
+        raise ValueError('El avance está vinculado a más de un ticket y requiere revisión técnica.')
+
+    detalle = detalles[0] if detalles else None
+    venta_origen = detalle.venta if detalle else None
+    cosecha = data.get('cosecha')
+    cosechero = data['cosechero']
+    fecha = data['fecha']
+
+    if detalle and cosecha is None:
+        raise ValueError('Un avance ya vinculado debe conservar una cosecha.')
+
+    claves = set()
+    if venta_origen:
+        claves.add((
+            venta_origen.cosechero_id,
+            venta_origen.cosecha_id,
+            venta_origen.fecha_venta,
+        ))
+    if cosecha:
+        claves.add((cosechero.pk, cosecha.pk, proximo_sabado(fecha)))
+    _bloquear_cuentas_semanales(claves)
+
+    venta_destino = None
+    if cosecha:
+        if (
+            venta_origen
+            and venta_origen.cosechero_id == cosechero.pk
+            and venta_origen.cosecha_id == cosecha.pk
+            and venta_origen.fecha_venta == proximo_sabado(fecha)
+        ):
+            venta_destino = venta_origen
+        else:
+            venta_destino = _obtener_o_crear_venta(cosechero, cosecha, fecha)
+
+    avance.cosechero = cosechero
+    avance.fecha = fecha
+    avance.tipo_avance = data['tipo_avance']
+    avance.numero = data.get('numero') or None
+    avance.monto_pagado = data['monto_pagado']
+    avance.descripcion = data.get('descripcion') or None
+    avance.estado = data.get('estado') or 'realizado'
+    avance.save(update_fields=[
+        'cosechero', 'fecha', 'tipo_avance', 'numero', 'monto_pagado',
+        'descripcion', 'estado',
+    ])
+
+    if detalle:
+        DetalleAvance.objects.filter(pk=detalle.pk).update(
+            venta=venta_destino,
+            monto=avance.monto_pagado,
+        )
+    elif venta_destino:
+        DetalleAvance.objects.create(
+            venta=venta_destino,
+            avance=avance,
+            monto=avance.monto_pagado,
+        )
+
+    _recalcular_ventas(venta_origen, venta_destino)
+    return avance
+
+
+@transaction.atomic
+def cambiar_estado_activo(avance_id: int, *, activo: bool) -> Avance:
+    avance = Avance.objects.select_for_update().get(pk=avance_id)
+    detalles = list(
+        DetalleAvance.objects.select_for_update()
+        .select_related('venta')
+        .filter(avance=avance)
+    )
+    avance.is_active = activo
+    avance.save(update_fields=['is_active'])
+    _recalcular_ventas(*(detalle.venta for detalle in detalles))
+    return avance
+
+
+@transaction.atomic
+def vincular_avance_huerfano(
+    avance_id: int,
+    *,
+    cosecha: Cosecha,
+    cosechero: Cosechero,
+    fecha: date,
+) -> Avance:
+    avance = Avance.objects.select_for_update().get(pk=avance_id)
+    if not avance.is_active:
+        raise ValueError('Restaure el avance antes de vincularlo.')
+    if DetalleAvance.objects.select_for_update().filter(avance=avance).exists():
+        raise ValueError('Este avance ya está vinculado a una cuenta semanal.')
+
+    clave = (cosechero.pk, cosecha.pk, proximo_sabado(fecha))
+    _bloquear_cuentas_semanales({clave})
+    venta = _obtener_o_crear_venta(cosechero, cosecha, fecha)
+
+    avance.cosechero = cosechero
+    avance.fecha = fecha
+    avance.save(update_fields=['cosechero', 'fecha'])
+    DetalleAvance.objects.create(
+        venta=venta,
+        avance=avance,
+        monto=avance.monto_pagado,
+    )
+    _recalcular_ventas(venta)
+    return avance

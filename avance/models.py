@@ -23,6 +23,9 @@ class Avance(models.Model):
 
     def delete(self, *args, **kwargs):
         self.is_active = False
-        self.save()
+        self.save(update_fields=['is_active'])
+
+    def __str__(self):
+        return f"{self.get_tipo_avance_display()} {self.numero or self.id} — {self.cosechero}"
 
     # ... otros métodos ...

@@ -112,7 +112,7 @@ def _imprimir_ticket(request, venta: Venta):
                 )
 
         # Avances
-        avances = venta.detalle_avances.select_related('avance').all()
+        avances = venta.detalle_avances.select_related('avance').filter(avance__is_active=True)
         if avances.exists():
             p.set(bold=True)
             p.text("\nDetalles de Avances:\n")

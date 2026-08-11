@@ -84,3 +84,15 @@ Evidencia y resolución:
 - No hubo migraciones, restauraciones, cambios de filas ni reinicio efectivo del servicio SQL Server.
 
 Si reaparece, no interrumpir repetidamente la creación de la base de pruebas. Identificar primero el PID exacto de `manage.py test`, comprobar conexiones a `test_Tabacalera` y actuar solo sobre esa base temporal. Nunca eliminar ni restaurar `Tabacalera` para resolver un bloqueo de pruebas.
+
+## Despliegue del CRUD de avances — 2026-08-11
+
+- No contiene migraciones de esquema ni corrige automáticamente filas históricas.
+- Requiere `npm run build` porque incorpora nuevas plantillas Tailwind.
+- Antes de habilitar edición/desactivación, detener escrituras y crear un backup nuevo `COPY_ONLY WITH CHECKSUM, COMPRESSION`, verificarlo y copiarlo a `C:\Tabacalera\backups` con hash coincidente.
+- Ejecutar `manage.py check`, `makemigrations --check --dry-run` y la suite MSSQL cuando el servidor acepte conexiones nuevas.
+- Smoke autenticado mínimo: tabla por defecto, filtro Sin cosecha, alta idempotente, corrección dentro de la misma semana, movimiento entre semanas, desactivación y restauración.
+- Confirmar al centavo la misma cifra en detalle de avance, ticket, Dashboard y PDF.
+- La reversión de código consiste en volver al commit anterior. Como no existe historial de edición, una corrección productiva ya confirmada debe repararse manualmente o recuperarse desde backup coordinando la pérdida de movimientos posteriores.
+
+Durante la implementación, 29 pruebas relevantes pasaron en SQLite aislado. Los intentos de crear/conectar la base de pruebas MSSQL agotaron el tiempo de login; se detuvo únicamente el proceso de pruebas y se dejó intacto el `runserver` productivo. No reiniciar SQL Server ni eliminar bases para completar esta verificación mientras haya usuarios trabajando.

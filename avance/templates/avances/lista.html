@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block page_title %}Avances{% endblock %}
+{% block page_title_bar %}Avances{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-7xl space-y-5">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[.2em] text-tobacco-400">Financiamiento de cosecha</p>
+      <h1 class="mt-1 text-2xl font-bold text-white">Avances</h1>
+      <p class="mt-1 text-sm text-slate-400">Consulte, corrija y registre cheques, depósitos y pagos en efectivo.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{% url 'avances_importar' %}" class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800">Importar archivo</a>
+      <a href="{% url 'avance_nuevo' %}" class="rounded-lg bg-tobacco-600 px-4 py-2 text-sm font-semibold text-white hover:bg-tobacco-500">Nuevo avance</a>
+    </div>
+  </div>
+
+  <div class="grid gap-3 sm:grid-cols-2">
+    <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+      <p class="text-xs uppercase tracking-wider text-slate-500">Registros filtrados</p>
+      <p class="mt-1 text-2xl font-bold text-white">{{ resumen.cantidad }}</p>
+    </div>
+    <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+      <p class="text-xs uppercase tracking-wider text-slate-500">Monto filtrado</p>
+      <p class="mt-1 text-2xl font-bold text-emerald-400">RD$ {{ resumen.total|default:0|floatformat:2 }}</p>
+    </div>
+  </div>
+
+  <form method="get" class="grid gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4 md:grid-cols-2 xl:grid-cols-4">
+    <div class="xl:col-span-2">
+      <label class="mb-1 block text-xs font-medium text-slate-400">Buscar</label>
+      <input name="q" value="{{ q }}" placeholder="Nombre, ID, número o descripción" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Cosecha</label>
+      <select name="cosecha" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" {% if sin_cosecha %}disabled{% endif %}>
+        <option value="todas" {% if not cosecha_seleccionada and not sin_cosecha %}selected{% endif %}>Todas las cosechas</option>
+        {% for cosecha in cosechas %}<option value="{{ cosecha.id }}" {% if cosecha_seleccionada.id == cosecha.id %}selected{% endif %}>{{ cosecha }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Visibilidad</label>
+      <select name="activo" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+        <option value="activos" {% if activo == 'activos' %}selected{% endif %}>Activos</option>
+        <option value="inactivos" {% if activo == 'inactivos' %}selected{% endif %}>Desactivados</option>
+        <option value="todos" {% if activo == 'todos' %}selected{% endif %}>Todos</option>
+      </select>
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Tipo</label>
+      <select name="tipo" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+        <option value="">Todos</option>
+        {% for value,label in tipos %}<option value="{{ value }}" {% if tipo == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Estado documental</label>
+      <select name="estado" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+        <option value="">Todos</option>
+        {% for value,label in estados %}<option value="{{ value }}" {% if estado == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Desde</label>
+      <input type="date" name="desde" value="{{ desde }}" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Hasta</label>
+      <input type="date" name="hasta" value="{{ hasta }}" class="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+    </div>
+    <label class="flex items-center gap-2 text-sm text-slate-300">
+      <input type="checkbox" name="sin_cosecha" value="1" {% if sin_cosecha %}checked{% endif %} class="rounded border-slate-600 bg-slate-900 text-tobacco-500">
+      Solo avances sin cosecha
+    </label>
+    <div class="flex gap-2 md:justify-end xl:col-span-3">
+      <a href="{% url 'avances' %}" class="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300">Limpiar</a>
+      <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-500">Filtrar</button>
+    </div>
+  </form>
+
+  <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[1180px]">
+        <thead class="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
+          <tr>
+            <th class="px-4 py-3 text-left">Fecha</th>
+            <th class="px-4 py-3 text-left">Cosechero</th>
+            <th class="px-4 py-3 text-left">Cosecha / ticket</th>
+            <th class="px-4 py-3 text-left">Tipo / número</th>
+            <th class="px-4 py-3 text-left">Descripción</th>
+            <th class="px-4 py-3 text-left">Estado</th>
+            <th class="px-4 py-3 text-right">Monto</th>
+            <th class="px-4 py-3 text-right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for avance in avances %}
+          {% with vinculo=avance.vinculos.0 %}
+          <tr class="border-t border-slate-800/70 {% if not avance.is_active %}bg-slate-950/70 opacity-70{% else %}hover:bg-slate-800/30{% endif %}">
+            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-300">{{ avance.fecha|date:'d/m/Y' }}</td>
+            <td class="px-4 py-3"><p class="text-sm font-medium text-white">{{ avance.cosechero }}</p><p class="text-xs text-slate-500">ID {{ avance.cosechero_id }}</p></td>
+            <td class="px-4 py-3">
+              {% if avance.vinculos|length > 1 %}<span class="rounded-full bg-red-500/10 px-2 py-1 text-xs font-medium text-red-300">Vínculo ambiguo</span>
+              {% elif vinculo %}<p class="text-sm text-slate-300">{{ vinculo.venta.cosecha }}</p><p class="text-xs text-slate-500">Ticket #{{ vinculo.venta_id }} · {{ vinculo.venta.fecha_venta|date:'d/m/Y' }}</p>
+              {% else %}<span class="rounded-full bg-red-500/10 px-2 py-1 text-xs font-medium text-red-300">Sin cosecha</span>{% endif %}
+            </td>
+            <td class="px-4 py-3"><p class="text-sm text-slate-300">{{ avance.get_tipo_avance_display }}</p><p class="text-xs font-mono text-slate-500">{{ avance.numero|default:'Sin referencia' }}</p></td>
+            <td class="max-w-[260px] px-4 py-3 text-sm text-slate-400"><p class="truncate" title="{{ avance.descripcion|default:'' }}">{{ avance.descripcion|default:'—' }}</p></td>
+            <td class="px-4 py-3"><span class="rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-300">{{ avance.get_estado_display }}</span>{% if not avance.is_active %}<span class="ml-1 rounded-full bg-slate-700 px-2 py-1 text-xs text-slate-300">Desactivado</span>{% endif %}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-emerald-400">RD$ {{ avance.monto_pagado|floatformat:2 }}</td>
+            <td class="px-4 py-3"><div class="flex justify-end gap-2">
+              <a href="{% url 'avance_detalle' avance.id %}" class="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300">Ver</a>
+              {% if avance.is_active and avance.vinculos|length <= 1 %}<a href="{% url 'avance_editar' avance.id %}" class="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-blue-300">Editar</a>{% endif %}
+              {% if not vinculo and avance.is_active %}<a href="{% url 'avance_vincular' avance.id %}" class="rounded border border-amber-600/40 px-2.5 py-1.5 text-xs text-amber-300">Vincular</a>{% endif %}
+            </div></td>
+          </tr>
+          {% endwith %}
+          {% empty %}<tr><td colspan="8" class="px-5 py-14 text-center text-sm text-slate-500">No hay avances que coincidan con los filtros.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <nav class="flex items-center justify-between text-sm text-slate-400" aria-label="Paginación de avances">
+    <p>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} avances</p>
+    <div class="flex gap-2">
+      {% if page_obj.has_previous %}<a class="rounded-lg border border-slate-700 px-3 py-2 hover:bg-slate-800" href="?{% if filtros_query %}{{ filtros_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}
+      {% if page_obj.has_next %}<a class="rounded-lg border border-slate-700 px-3 py-2 hover:bg-slate-800" href="?{% if filtros_query %}{{ filtros_query }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>{% endif %}
+    </div>
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

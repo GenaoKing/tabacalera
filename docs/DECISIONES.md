@@ -45,10 +45,19 @@
 
 ### Decisiones financieras pendientes
 
-- Definir formalmente el efecto contable futuro de `Avance.estado = nulo` y `cambiado`. La fase actual conserva la regla histórica porque todos los avances productivos existentes están activos y realizados.
 - Definir si el redondeo monetario debe aplicarse por detalle, por agrupación o solo al total. Hasta entonces se conserva la precisión Decimal existente y se presentan dos decimales.
 - Resolver manualmente los siete avances históricos sin cosecha antes de incorporarlos a cualquier conciliación.
 - Evaluar un modelo de terreno por `cosechero + cosecha` si se necesita comparar promedios históricos cuando el área sembrada cambia entre temporadas.
+
+## CRUD de avances
+
+- La tabla abre en la cosecha más reciente y muestra avances activos; filtros explícitos permiten consultar otras cosechas, inactivos y huérfanos.
+- Un alta individual siempre queda vinculada a la cuenta `cosechero + cosecha + sábado` y usa la idempotencia de `OperacionVenta`.
+- Se permite corregir cosechero, cosecha, fecha, monto y datos documentales. La edición modifica el avance existente, sin tabla de versiones, y recalcula transaccionalmente las cuentas afectadas.
+- `realizado`, `cambiado` y `nulo` son informativos. Solo `Avance.is_active` determina si el cargo participa en tickets, Dashboard, PDF y saldos.
+- Desactivar es reversible; un avance inactivo es de solo lectura hasta restaurarlo.
+- Los huérfanos se muestran, pero solo se vinculan después de confirmar manualmente cosecha, cosechero y fecha. No se asignan automáticamente por rango.
+- El importador conserva su preview y queda disponible como acción secundaria desde la tabla.
 
 ## Seguridad local
 

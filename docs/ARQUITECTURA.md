@@ -1,6 +1,6 @@
 # Arquitectura — Tabacalera
 
-> Actualizado: 2026-08-08, rama `feature/venta-segura`. Las rutas `archivo:línea` antiguas pueden haberse desplazado durante la implementación.
+> Actualizado: 2026-08-11, rama `feature/venta-segura`. Las rutas `archivo:línea` antiguas pueden haberse desplazado durante la implementación.
 
 ## 1. Qué es este sistema
 
@@ -39,6 +39,7 @@ Cada envío nuevo queda auditado en `OperacionVenta`, con UUID idempotente, usua
 - Ventas usa AJAX, errores inline, borrador por pestaña/usuario con expiración de 24 horas y resumen semanal previo al envío.
 - Tickets filtra y pagina 50 filas en servidor; la impresión solo acepta POST.
 - Cosecheros, artículos y proveedores cuentan con CRUD operativo Tailwind y desactivación lógica.
+- Avances cuenta con tabla paginada, filtros, alta individual idempotente, edición transaccional, desactivación reversible y vinculación manual de huérfanos.
 - Dashboard calcula el universo completo por cosecha —entregas o ventas activas—, alerta cuentas sin producción, muestra última actividad y exporta CSV sin persistir otro saldo.
 - `proximo_sabado()` vive en `app/business_dates.py`.
 - Configuración sensible y rutas locales se leen desde `.env`; el repositorio solo conserva `.env.example`.
@@ -75,7 +76,7 @@ El flujo implementado actualmente es:
 |---|---|---|---|
 | `dashboard` | Conciliación financiera completa por cosecha, alertas y CSV. | `/` | ✅ Tailwind |
 | `cosecheros` | Productores, temporadas de cosecha, entregas de tabaco por grado, precios por variedad/cosecha. PDFs de resumen por cosechero. | `/cosecheros/` | ✅ Migrado |
-| `avance` | Avances/cheques a cosecheros — hoy solo vía **import masivo** CSV/XLSX. | `/avances/` | ✅ Migrado |
+| `avance` | CRUD operativo de avances y carga masiva CSV/XLSX con previsualización. | `/avances/` | ✅ Tailwind |
 | `proveedor` | CRUD operativo de proveedores. | `/proveedores/` | ✅ Tailwind |
 | `articulo` | CRUD y altas rápidas de insumos ligados a proveedor. | `/articulos/` | ✅ Tailwind |
 | `compra` | Compras de artículos a proveedores; inventario FIFO por lote (`DetalleCompra.cantidad_restante`). | `/compra/` | ✅ Migrado |
@@ -142,16 +143,23 @@ Actualmente `terreno_sembrado` está en la ficha del cosechero y no conserva un 
 
 La fecha de actividad es operativa. Entregas y avances tienen fecha exacta; artículos nuevos usan `OperacionVenta.fecha_movimiento`; artículos históricos sin operación usan `Venta.fecha_venta` con precisión `cierre_semanal`. Si coinciden fuentes exactas e históricas, la precisión es `mixta`.
 
-## 5. Los dos caminos para crear un "cheque" (`Avance`)
+## 5. Gestión de avances
 
 Esto no es obvio navegando el sidebar, así que vale la pena documentarlo explícitamente:
 
 | Camino | Dónde | Para qué sirve |
 |---|---|---|
-| **A. Import masivo** | `avance/` → `/avances/` (`upload.html`, wizard de 3 pasos: subir → previsualizar/corregir → confirmar) | Cargar muchos avances de una vez desde un export bancario (CSV/XLSX de cheques, depósitos o pagos en efectivo) |
-| **B. Entrada individual** | Dentro de `ventas/templates/ventas_form_v2.html`, modal "Nuevo Avance" | El flujo diario: mientras se registra una venta a un cosechero, se agrega un cheque/depósito/efectivo puntual como parte de esa misma venta |
+| **A. CRUD operativo** | `/avances/` → “Nuevo avance” | Consultar, filtrar y registrar un avance individual directamente en la cuenta semanal correcta. |
+| **B. Import masivo** | `/avances/importar/` (`upload.html`, wizard subir → previsualizar → confirmar) | Cargar muchos avances desde un export bancario CSV/XLSX. |
+| **C. Dentro de Ventas** | Modal “Nuevo avance” de `ventas_form_v2.html` | Agregar el avance junto con artículos dentro del mismo envío semanal. |
 
-**La app `avance` en sí no tiene ninguna vista para crear/editar/listar un `Avance` individual** — solo el wizard de import masivo. Lo que el usuario probablemente tiene en mente cuando dice "la creación de cheques es lenta" es el camino B (el modal dentro de `ventas_form.html`), que comparte toda la infraestructura (y por lo tanto los mismos problemas de rendimiento) del registro de ventas — ver `PLAN_MEJORA.md`.
+La lista pagina 50 registros y filtra en servidor por cosecha, cosechero/ID, referencia, descripción, tipo, estado documental, actividad y fechas. La cosecha se deriva de `DetalleAvance → Venta`; no se duplica en `Avance`.
+
+Crear reutiliza la idempotencia y el bloqueo semanal de `ventas.services.procesar_venta()`. Editar bloquea el avance y sus cuentas, sincroniza `Avance.monto_pagado` con `DetalleAvance.monto`, mueve el detalle si cambia cosechero/cosecha/sábado y recalcula los tickets de origen y destino. No existe historial de versiones: la edición modifica la misma fila, por decisión operativa.
+
+`realizado`, `cambiado` y `nulo` son estados documentales informativos. La inclusión contable depende exclusivamente de `Avance.is_active`: desactivar excluye el detalle de `Venta.total`, Dashboard, PDF, ticket térmico y detalle web; restaurar lo reincorpora. Los avances inactivos son de solo lectura.
+
+Los avances sin `DetalleAvance` aparecen como **Sin cosecha**. La acción “Vincular” exige confirmación explícita de cosecha, cosechero y fecha y crea el detalle en la cuenta semanal exacta; nunca infiere la temporada por rango de fechas.
 
 ## 6. Deuda técnica y roturas conocidas
 
@@ -161,8 +169,7 @@ Registradas aquí para que no se vuelvan a introducir ni se pierda el rastro de 
 
 **Aún abiertas:**
 
-- Resolver manualmente los siete avances sin venta/cosecha registrados en `INCIDENCIAS_DATOS.md`.
-- Definir el efecto contable de estados futuros `nulo` y `cambiado` en avances.
+- Resolver manualmente, mediante el CRUD, los siete avances sin venta/cosecha registrados en `INCIDENCIAS_DATOS.md`.
 - Formalizar si el redondeo monetario se hace por detalle, agrupación o total.
 - Incorporar al dashboard un historial desplegable de `OperacionVenta` cuando la operación lo requiera.
 - La validación física de la impresora USB sigue pendiente por decisión operativa; el fallo lógico está probado y no revierte ventas.

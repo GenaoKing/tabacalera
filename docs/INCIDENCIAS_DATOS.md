@@ -1,6 +1,6 @@
 # Incidencias de datos pendientes
 
-> Revisión: 2026-08-08. Este documento registra casos detectados; no autoriza correcciones automáticas.
+> Revisión: 2026-08-11. Este documento registra casos detectados; no autoriza correcciones automáticas.
 
 ## Avances sin venta ni cosecha
 
@@ -18,14 +18,16 @@ Existen siete filas activas de `Avance` que no tienen un `DetalleAvance`. Como `
 
 **Total pendiente de clasificación: 234,250.00.** La cosecha indicada es solo una referencia basada en el rango de fechas; no se usa para calcular saldos ni debe considerarse confirmada.
 
-### Procedimiento futuro de resolución
+### Procedimiento de resolución disponible
 
 1. Comparar cada avance con el documento bancario y el reporte firmado del cosechero.
 2. Confirmar cosecha, sábado de cuenta y que no exista ya otro movimiento equivalente.
-3. Vincularlo manualmente mediante una `Venta` de la cosecha confirmada y un `DetalleAvance` por el monto correcto.
+3. Abrir `/avances/?sin_cosecha=1`, revisar el avance y usar **Vincular a cosecha** con la cosecha, cosechero y fecha confirmados. El servicio crea o reutiliza la cuenta semanal exacta y genera un solo `DetalleAvance`.
 4. Regenerar Dashboard, CSV y PDF y registrar aquí la evidencia de la corrección.
 
 Hasta completar esos pasos, el dashboard, el CSV, el PDF y el comando de conciliación excluyen deliberadamente estas siete filas para evitar una asignación o duplicación incorrecta.
+
+La implementación del CRUD no vinculó ni modificó automáticamente ninguno de estos siete casos.
 
 ## Correcciones manuales realizadas
 

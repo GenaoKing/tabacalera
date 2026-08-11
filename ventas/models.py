@@ -24,7 +24,7 @@ class Venta(models.Model):
             total=Sum(F('cantidad') * F('precio_venta_final'))
         )['total'] or Decimal('0')
         total_avances = self.detalle_avances.aggregate(
-            total=Sum('monto')
+            total=Sum('monto', filter=models.Q(avance__is_active=True))
         )['total'] or Decimal('0')
 
         self.total = total_articulos + total_avances

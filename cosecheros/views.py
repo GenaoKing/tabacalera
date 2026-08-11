@@ -224,7 +224,10 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     story.append(tabla_articulos)
     story.append(Spacer(1, 12))  # Espacio después de la tabla
 
-    avances = DetalleAvance.objects.filter(venta__in=ventas).select_related('avance').order_by('avance__fecha')
+    avances = DetalleAvance.objects.filter(
+        venta__in=ventas,
+        avance__is_active=True,
+    ).select_related('avance').order_by('avance__fecha')
 
 # Preparar los datos para la tabla de avances
 

@@ -200,8 +200,7 @@ def extraer_avances_validados(post_data: dict) -> tuple[list[dict], list[str]]:
 
         faltantes = [
             etiqueta for etiqueta, valor in (
-                ('tipo', tipo_avance), ('número', numero),
-                ('monto', monto), ('fecha', fecha),
+                ('tipo', tipo_avance), ('monto', monto), ('fecha', fecha),
             ) if not valor
         ]
         if faltantes:
@@ -218,7 +217,9 @@ def extraer_avances_validados(post_data: dict) -> tuple[list[dict], list[str]]:
             continue
 
         avances_data.append({
-            'descripcion': descripcion or f"Avance {tipo_avance} #{numero}",
+            'descripcion': descripcion or (
+                f"Avance {tipo_avance} #{numero}" if numero else f"Avance {tipo_avance}"
+            ),
             'tipo_avance': tipo_avance,
             'numero': numero,
             'monto_pagado': monto_decimal,
@@ -588,7 +589,8 @@ def obtener_detalles_venta(venta: Venta) -> dict:
 
     # Avances
     avances = DetalleAvance.objects.filter(
-        venta=venta
+        venta=venta,
+        avance__is_active=True,
     ).select_related('avance')
 
     avances_list = [

@@ -1,6 +1,6 @@
 # Plan de mejora — Tabacalera
 
-> Última auditoría de código: 2026-08-09. Ver [ARQUITECTURA.md](ARQUITECTURA.md) para el mapa del sistema referenciado aquí.
+> Última auditoría de código: 2026-08-11. Ver [ARQUITECTURA.md](ARQUITECTURA.md) para el mapa del sistema referenciado aquí.
 
 ## Ejecución del roadmap integral — 2026-08-08
 
@@ -18,6 +18,23 @@
 | Indicadores por tarea y cosechero | Completada | `65394a2`, bloque individual con gasto, producción y quintales por tarea; protección sin terreno y CSV/PDF ampliados |
 | Identidad visual corporativa | Completada | `4e53cb2`, logo canónico en portal, login, favicon, Admin, PDF y ticket; rutas server-side centralizadas |
 | Soporte de correcciones de entregas | Completada | `13a5912`, `EntregaTabaco` visible y buscable en Admin; corrección 60117 auditada |
+| CRUD operativo de avances | Completada en código | tabla paginada, alta idempotente, edición/movimiento transaccional, soft-delete contable y vinculación manual |
+
+## Fase 12 — CRUD operativo de avances
+
+- [x] Convertir `/avances/` en tabla de 50 filas con búsqueda, filtros, resumen y conservación de query string.
+- [x] Mantener el importador en `/avances/importar/` y redirigir la ruta histórica `/avances/upload/`.
+- [x] Crear alta individual sobre la operación idempotente y la cuenta semanal exacta.
+- [x] Permitir correcciones de todos los campos y mover el detalle entre cuentas dentro de una transacción.
+- [x] Desactivar/restaurar usando `is_active` como única regla de inclusión contable.
+- [x] Excluir inactivos de total semanal, Dashboard, PDF, ticket térmico y detalle web.
+- [x] Mostrar huérfanos y permitir vinculación manual sin inferir cosecha.
+- [x] Recompilar Tailwind y añadir pruebas de paginación, replay, edición, movimiento, desactivación y vinculación.
+- [x] Actualizar arquitectura, decisiones, incidencias y runbook.
+
+No agrega modelos ni migraciones y no modifica datos históricos durante el despliegue. La edición es deliberadamente directa y no conserva versiones; por ello se exige backup verificado antes de habilitarla en operación.
+
+**Validación en desarrollo**: `manage.py check` limpio, `makemigrations --check --dry-run` sin cambios y 29 pruebas relevantes aprobadas en SQLite aislado. La suite MSSQL quedó pendiente porque las conexiones nuevas al SQL Server local expiraron durante el login; el proceso productivo existente no fue reiniciado ni interrumpido.
 
 ## Fase 11 — Soporte de correcciones de entregas
 

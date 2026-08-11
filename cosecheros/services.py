@@ -232,7 +232,10 @@ def calcular_resumenes_cosecha(
                 'exacta' if fecha_operacion else 'cierre_semanal',
             )
 
-        detalles_avance = DetalleAvance.objects.filter(venta_id__in=venta_ids).values(
+        detalles_avance = DetalleAvance.objects.filter(
+            venta_id__in=venta_ids,
+            avance__is_active=True,
+        ).values(
             'venta_id', 'venta__cosechero_id', 'monto', 'avance__fecha',
         )
         for detalle in detalles_avance:
