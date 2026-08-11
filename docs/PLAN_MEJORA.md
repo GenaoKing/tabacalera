@@ -164,6 +164,9 @@ Cada tarea cita `archivo:línea` como estaba en la auditoría — verificar que 
 - [x] **Hacer visible el cierre semanal automático.** *(Resuelto — 2026-08-08: tarjeta de resumen con sábado, ticket y total acumulado.)*
   **Métrica**: cualitativa — confirmar con el usuario/cajeros que dejan de reportar confusión sobre la fecha del ticket.
 
+- [x] **Hacer inequívoco el estado de las acciones de venta.** *(Resuelto — 2026-08-11: la barra inferior respeta el ancho del sidebar, informa por qué no se puede guardar y solo activa visual y funcionalmente los botones tras confirmar cosechero, cosecha, fecha, cuenta semanal y movimientos válidos.)* Las consultas semanales concurrentes se descartan por identificador para impedir que una respuesta anterior habilite una selección nueva.
+  **Evidencia**: caso Anthony Martínez Genao, cosecha 2025-2026, movimiento 2026-04-17 y 15 unidades de Bollo De Hilo 10LB; el artículo dispone de 360 unidades y no existe ticket activo para el cierre 2026-04-18.
+
 - [x] **Alta rápida de cosechero/artículo faltante sin salir del ticket en progreso.** *(Resuelto — 2026-08-08: modales operativos que conservan el borrador.)*
   **Métrica**: de ~5+ navegaciones de página a 1 modal para el caso de "cosechero nuevo a mitad de venta".
 

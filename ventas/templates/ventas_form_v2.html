@@ -2,7 +2,7 @@
 {% block page_title %}Registro de Venta{% endblock %}
 
 {% block content %}
-<div x-data="ventaApp()" x-init="init()" class="space-y-5 pb-32">
+<div x-data="ventaApp()" x-init="init()" class="space-y-5 pb-40">
   <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
     <div>
       <h1 class="text-2xl font-bold text-white">Registro de venta</h1>
@@ -45,7 +45,7 @@
             <button type="button" @click="modalCosechero = true" class="text-xs text-blue-300 hover:text-white">+ Alta rápida</button>
           </div>
           <input type="text" x-model="busquedaCosechero" @focus="selectorCosechero = true"
-                 @input="cosecheroId = ''; cosecheroNombre = ''; selectorCosechero = true; resumenSemanal = null; guardarBorrador()"
+                 @input="limpiarSeleccionCosechero()"
                  @click.outside="selectorCosechero = false" autocomplete="off"
                  placeholder="Escriba nombre o apellido"
                  class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
@@ -172,15 +172,31 @@
     </section>
   </form>
 
-  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 p-4 backdrop-blur">
+  <div class="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-slate-950/95 p-4 backdrop-blur transition-[left] duration-300"
+       :class="sidebarOpen ? 'lg:left-[240px]' : 'lg:left-[64px]'">
     <div class="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center">
-      <div class="flex-1"><p class="text-xs uppercase tracking-wider text-slate-500">Movimiento a agregar</p><p class="font-mono text-xl font-bold text-white" x-text="moneda(totalVenta)"></p></div>
-      <button type="button" @click="submitVenta('guardar')" :disabled="enviando || resumenSemanal?.ambigua"
-              class="rounded-lg border border-slate-700 px-5 py-3 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-40">
+      <div class="flex-1">
+        <p class="text-xs uppercase tracking-wider text-slate-500">Movimiento a agregar</p>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <p class="font-mono text-xl font-bold text-white" x-text="moneda(totalVenta)"></p>
+          <p class="flex items-center gap-2 text-xs" :class="puedeGuardar ? 'text-emerald-300' : 'text-slate-500'" aria-live="polite">
+            <span class="h-2 w-2 rounded-full" :class="puedeGuardar ? 'bg-emerald-400' : 'bg-slate-600'"></span>
+            <span x-text="estadoAcciones"></span>
+            <button x-cloak x-show="cosecheroId && cosechaId && fechaVenta && !consultandoResumen && !resumenSemanal"
+                    type="button" @click="cargarResumen()" class="font-semibold text-blue-300 underline hover:text-blue-200">
+              Reintentar consulta
+            </button>
+          </p>
+        </div>
+      </div>
+      <button type="button" @click="submitVenta('guardar')" :disabled="!puedeGuardar" :aria-disabled="!puedeGuardar" :title="estadoAcciones"
+              class="rounded-lg border px-5 py-3 text-sm font-semibold transition-colors"
+              :class="puedeGuardar ? 'border-slate-600 bg-slate-800 text-white hover:bg-slate-700' : 'cursor-not-allowed border-slate-800 bg-slate-900 text-slate-600'">
         <span x-text="enviando && accionSubmit === 'guardar' ? 'Guardando…' : 'Guardar'"></span>
       </button>
-      <button type="button" @click="submitVenta('imprimir')" :disabled="enviando || resumenSemanal?.ambigua"
-              class="rounded-lg bg-blue-600 px-5 py-3 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40">
+      <button type="button" @click="submitVenta('imprimir')" :disabled="!puedeGuardar" :aria-disabled="!puedeGuardar" :title="estadoAcciones"
+              class="rounded-lg px-5 py-3 text-sm font-semibold transition-colors"
+              :class="puedeGuardar ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/30 hover:bg-blue-500' : 'cursor-not-allowed bg-slate-800 text-slate-600'">
         <span x-text="enviando && accionSubmit === 'imprimir' ? estadoEnvio : 'Registrar e imprimir'"></span>
       </button>
     </div>
@@ -245,7 +261,8 @@ function ventaApp() {
     cosecheroId: '', cosecheroNombre: '', busquedaCosechero: '', selectorCosechero: false,
     cosechaId: '{{ cosecha_default.id }}', fechaVenta: '{{ fecha_hoy }}',
     busquedaArticulo: '', carrito: [], avances: [], modalAvance: false, modalCosechero: false, modalArticulo: false,
-    resumenSemanal: null, enviando: false, accionSubmit: 'guardar', estadoEnvio: 'Guardando…',
+    resumenSemanal: null, consultandoResumen: false, resumenConsultaId: 0,
+    enviando: false, accionSubmit: 'guardar', estadoEnvio: 'Guardando…',
     idempotencyKey: '', borradorRestaurado: false, advertenciaBorrador: '',
     impresionPendienteUrl: '',
     notificacion: { tipo: 'success', mensaje: '' },
@@ -272,6 +289,35 @@ function ventaApp() {
       return this.carrito.reduce((t, i) => t + Number(i.precio) * Number(i.cantidad), 0)
         + this.avances.reduce((t, a) => t + Number(a.monto), 0);
     },
+    get movimientosValidos() {
+      const articulosValidos = this.carrito.every(item => {
+        const cantidad = Number(item.cantidad);
+        return Number.isFinite(cantidad) && cantidad > 0 && cantidad <= Number(item.maximo);
+      });
+      const avancesValidos = this.avances.every(avance => {
+        const monto = Number(avance.monto);
+        return Number.isFinite(monto) && monto > 0;
+      });
+      return articulosValidos && avancesValidos;
+    },
+    get puedeGuardar() {
+      return Boolean(
+        !this.enviando && !this.consultandoResumen && this.resumenSemanal
+        && !this.resumenSemanal.ambigua && this.cosecheroId && this.cosechaId && this.fechaVenta
+        && (this.carrito.length || this.avances.length) && this.movimientosValidos
+      );
+    },
+    get estadoAcciones() {
+      if (this.enviando) return this.estadoEnvio;
+      if (!this.cosecheroId) return 'Seleccione un cosechero';
+      if (!this.cosechaId || !this.fechaVenta) return 'Complete cosecha y fecha';
+      if (this.consultandoResumen) return 'Consultando la cuenta semanal…';
+      if (!this.resumenSemanal) return 'No se ha confirmado la cuenta semanal';
+      if (this.resumenSemanal.ambigua) return 'Semana bloqueada por tickets duplicados';
+      if (!this.carrito.length && !this.avances.length) return 'Agregue un artículo o un avance';
+      if (!this.movimientosValidos) return 'Revise cantidades y montos';
+      return 'Listo para guardar';
+    },
     moneda(valor) { return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(Number(valor || 0)); },
     formatearFecha(valor) { return valor ? new Date(`${valor}T12:00:00`).toLocaleDateString('es-DO') : ''; },
     nuevaClave() {
@@ -282,19 +328,35 @@ function ventaApp() {
     },
     avisar(mensaje, tipo='success') { this.notificacion = { mensaje, tipo }; window.scrollTo({ top: 0, behavior: 'smooth' }); },
 
+    limpiarSeleccionCosechero() {
+      this.cosecheroId = ''; this.cosecheroNombre = ''; this.selectorCosechero = true;
+      this.resumenConsultaId += 1; this.consultandoResumen = false; this.resumenSemanal = null;
+      this.guardarBorrador();
+    },
     seleccionarCosechero(persona) {
       this.cosecheroId = String(persona.id); this.cosecheroNombre = persona.nombre;
       this.busquedaCosechero = persona.nombre; this.selectorCosechero = false;
       this.guardarBorrador(); this.cargarResumen();
     },
     async cargarResumen() {
-      if (!this.cosecheroId || !this.cosechaId || !this.fechaVenta) return;
+      if (!this.cosecheroId || !this.cosechaId || !this.fechaVenta) {
+        this.resumenSemanal = null; this.consultandoResumen = false; return;
+      }
+      const consultaId = ++this.resumenConsultaId;
+      this.consultandoResumen = true;
+      this.resumenSemanal = null;
       const params = new URLSearchParams({ cosechero: this.cosecheroId, cosecha: this.cosechaId, fecha: this.fechaVenta });
       try {
         const respuesta = await fetch(`{% url 'resumen_semanal' %}?${params}`);
-        const data = await respuesta.json(); this.resumenSemanal = data;
+        const data = await respuesta.json();
+        if (consultaId !== this.resumenConsultaId) return;
+        this.resumenSemanal = data;
         if (!respuesta.ok) this.avisar(data.errors?.join(' ') || 'No se pudo consultar la semana.', 'error');
-      } catch (_) { this.avisar('No se pudo actualizar el resumen semanal.', 'warning'); }
+      } catch (_) {
+        if (consultaId === this.resumenConsultaId) this.avisar('No se pudo actualizar el resumen semanal.', 'warning');
+      } finally {
+        if (consultaId === this.resumenConsultaId) this.consultandoResumen = false;
+      }
     },
     agregarArticulo(articulo) {
       if (Number(articulo.inventario) <= 0) return;
@@ -386,6 +448,7 @@ function ventaApp() {
     descartarBorrador() {
       sessionStorage.removeItem(this.claveBorrador); this.carrito = []; this.avances = [];
       this.cosecheroId = ''; this.cosecheroNombre = ''; this.busquedaCosechero = '';
+      this.resumenConsultaId += 1; this.consultandoResumen = false;
       this.idempotencyKey = this.nuevaClave(); this.borradorRestaurado = false; this.resumenSemanal = null;
       this.avisar('Borrador descartado.', 'success');
     },
@@ -411,6 +474,7 @@ function ventaApp() {
       if (!this.cosecheroId) return this.avisar('Seleccione un cosechero.', 'error');
       if (!this.carrito.length && !this.avances.length) return this.avisar('Agregue al menos un artículo o un avance.', 'error');
       if (this.resumenSemanal?.ambigua) return this.avisar('Esta semana histórica está bloqueada por duplicidad.', 'error');
+      if (!this.puedeGuardar) return this.avisar(this.estadoAcciones, 'error');
       this.enviando = true; this.accionSubmit = accion; this.estadoEnvio = 'Guardando…'; this.guardarBorrador();
       await this.$nextTick();
       try {
