@@ -96,3 +96,20 @@ Si reaparece, no interrumpir repetidamente la creación de la base de pruebas. I
 - La reversión de código consiste en volver al commit anterior. Como no existe historial de edición, una corrección productiva ya confirmada debe repararse manualmente o recuperarse desde backup coordinando la pérdida de movimientos posteriores.
 
 Durante la implementación, 29 pruebas relevantes pasaron en SQLite aislado. Los intentos de crear/conectar la base de pruebas MSSQL agotaron el tiempo de login; se detuvo únicamente el proceso de pruebas y se dejó intacto el `runserver` productivo. No reiniciar SQL Server ni eliminar bases para completar esta verificación mientras haya usuarios trabajando.
+
+### Backup previo a habilitar el CRUD de avances
+
+| Dato | Valor |
+|---|---|
+| Fecha local | 2026-08-11 18:59:16 (America/Santo_Domingo) |
+| Base | `Tabacalera` |
+| Servidor | `DESKTOP-VGQEGRL` mediante Shared Memory (`lpc`) |
+| Commit respaldado | `9858e25` (`feat: agregar CRUD operativo de avances`) |
+| Backup SQL Server | `C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\Backup\Tabacalera_pre_crud_avances_20260811_185916.bak` |
+| Copia operativa | `C:\Tabacalera\backups\Tabacalera_pre_crud_avances_20260811_185916.bak` |
+| Tamaño | 1,396,736 bytes |
+| SHA-256 | `BF80B284D940CB9767D8C2E2100C0F3A284CA36709F8EA19DA0771A330BBCEE1` |
+| Opciones | `COPY_ONLY`, `CHECKSUM`, `COMPRESSION` |
+| Verificación | `RESTORE VERIFYONLY WITH CHECKSUM` correcta; tamaño y SHA-256 idénticos en ambas copias |
+
+Después de verificar las dos copias se detuvo exclusivamente el proceso Django PID `49680`, que ejecutaba `manage.py runserver 127.0.0.1:8000 --noreload`. El puerto 8000 quedó libre y el servicio `MSSQLSERVER` permaneció en ejecución. El reinicio del portal queda a cargo del operador desde la terminal de VS Code.
