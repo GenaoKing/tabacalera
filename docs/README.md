@@ -7,6 +7,7 @@ Esta carpeta es la referencia técnica global del proyecto:
 - **[DECISIONES.md](DECISIONES.md)** — reglas de negocio y decisiones estables que el código debe respetar.
 - **[RUNBOOK_PRODUCCION.md](RUNBOOK_PRODUCCION.md)** — despliegue, validaciones, respaldo y rollback del sistema local.
 - **[INCIDENCIAS_DATOS.md](INCIDENCIAS_DATOS.md)** — casos históricos que requieren auditoría manual y que no deben inferirse automáticamente.
+- **[IMPORTACION_AVANCES.md](IMPORTACION_AVANCES.md)** — formato recomendado de Excel/CSV para cheques y depósitos, reglas de fecha, preview y limitaciones actuales contra duplicados.
 
 ## Cómo mantener esto actualizado
 

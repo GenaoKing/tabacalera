@@ -58,6 +58,9 @@
 - Desactivar es reversible; un avance inactivo es de solo lectura hasta restaurarlo.
 - Los huérfanos se muestran, pero solo se vinculan después de confirmar manualmente cosecha, cosechero y fecha. No se asignan automáticamente por rango.
 - El importador conserva su preview y queda disponible como acción secundaria desde la tabla.
+- Para archivos manuales mixtos se recomienda el formato unificado con `Tipo`, `ID`, `Fecha`, `Numero`, `Monto` y `Descripcion`; la cosecha se selecciona una vez en la interfaz para todo el lote.
+- La fecha del nombre es solo un fallback del export bancario de depósitos y usa `MM-DD-AA`; nunca se infiere desde los metadatos del archivo ni se aplica a cheques.
+- Mientras el importador no tenga idempotencia, un archivo confirmado no debe reimportarse. El resultado puede ser parcial porque cada fila se confirma en su propia transacción.
 
 ## Seguridad local
 

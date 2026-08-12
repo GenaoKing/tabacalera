@@ -31,6 +31,13 @@
 - [x] Mostrar huérfanos y permitir vinculación manual sin inferir cosecha.
 - [x] Recompilar Tailwind y añadir pruebas de paginación, replay, edición, movimiento, desactivación y vinculación.
 - [x] Actualizar arquitectura, decisiones, incidencias y runbook.
+- [x] Auditar y documentar el contrato real del archivo de importación, incluida la fecha `MM-DD-AA` tomada del nombre solo para depósitos. Ver `IMPORTACION_AVANCES.md`.
+
+Pendientes del importador heredado:
+
+- [ ] Incorporar idempotencia por archivo y fila, detección de referencias duplicadas y auditoría mediante `OperacionVenta`.
+- [ ] Reutilizar el bloqueo semanal MSSQL y decidir entre confirmación atómica del lote o éxito parcial explícito.
+- [ ] Normalizar montos con separadores dominicanos/estadounidenses sin ambigüedad y retirar el soporte anunciado de `.xls` si no se incorpora un lector compatible.
 
 No agrega modelos ni migraciones y no modifica datos históricos durante el despliegue. La edición es deliberadamente directa y no conserva versiones; por ello se exige backup verificado antes de habilitarla en operación.
 

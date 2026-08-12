@@ -153,6 +153,12 @@ Esto no es obvio navegando el sidebar, así que vale la pena documentarlo explí
 | **B. Import masivo** | `/avances/importar/` (`upload.html`, wizard subir → previsualizar → confirmar) | Cargar muchos avances desde un export bancario CSV/XLSX. |
 | **C. Dentro de Ventas** | Modal “Nuevo avance” de `ventas_form_v2.html` | Agregar el avance junto con artículos dentro del mismo envío semanal. |
 
+El contrato detallado de columnas, fechas y formatos del camino B está en `IMPORTACION_AVANCES.md`. Para archivos preparados manualmente se recomienda el formato unificado `Tipo + ID + Fecha + Numero + Monto + Descripcion`; permite mezclar cheques y depósitos en la primera hoja. La cosecha siempre se selecciona fuera del archivo y se aplica a todas las filas.
+
+El importador bancario puede obtener la fecha desde un patrón `MM-DD-AA` en el nombre del archivo, exclusivamente para depósitos sin fecha por fila. No consulta metadatos del archivo ni usa ese mecanismo para cheques. La fecha operativa se transforma luego en el sábado de la cuenta semanal.
+
+La previsualización no escribe datos y permite resolver cosecheros o fechas faltantes. La confirmación actual es transaccional por fila, no por lote: puede haber éxito parcial. Además, este flujo heredado aún no usa `OperacionVenta`, idempotencia por archivo/fila ni el bloqueo semanal MSSQL; reimportar el mismo archivo puede duplicar avances. Estas diferencias respecto al alta individual permanecen registradas como deuda prioritaria en `PLAN_MEJORA.md`.
+
 La lista pagina 50 registros y filtra en servidor por cosecha, cosechero/ID, referencia, descripción, tipo, estado documental, actividad y fechas. La cosecha se deriva de `DetalleAvance → Venta`; no se duplica en `Avance`.
 
 Crear reutiliza la idempotencia y el bloqueo semanal de `ventas.services.procesar_venta()`. Editar bloquea el avance y sus cuentas, sincroniza `Avance.monto_pagado` con `DetalleAvance.monto`, mueve el detalle si cambia cosechero/cosecha/sábado y recalcula los tickets de origen y destino. No existe historial de versiones: la edición modifica la misma fila, por decisión operativa.
