@@ -12,6 +12,7 @@ from django.views.decorators.http import require_GET, require_POST
 from urllib.parse import urlencode
 
 from app.branding import get_brand_logo_path
+from app.number_format import format_money, format_number
 from cosecheros.forms import CosecheroForm, EntregaTabacoForm
 from cosecheros.models import Cosecha, Cosechero, EntregaTabaco, PrecioVariedadCosecha
 from cosecheros.services import (
@@ -65,7 +66,7 @@ def encabezado_pie(canvas, doc):
     canvas.drawString(72, height - 36 - logo_height - 6, f"Nombre del Cosechero: {doc.cosechero_nombre}")
     canvas.setFont("Helvetica", 9)
     canvas.drawString(72, height - 36 - logo_height - 22, f"ID del Cosechero: {doc.cosechero_id}")
-    canvas.drawString(72, height - 36 - logo_height - 38, f"Terreno sembrado: {doc.terreno} tareas")
+    canvas.drawString(72, height - 36 - logo_height - 38, f"Terreno sembrado: {format_number(doc.terreno)} tareas")
     canvas.drawString(72, height - 36 - logo_height - 54, f"Direccion: {doc.direccion}")
     canvas.drawString(72, height - 36 - logo_height - 70, f"Tel: {doc.telefono}")
 
@@ -114,12 +115,12 @@ def generar_tablas_entregas(cosechero, entregas, styles, usable_width, precios):
             for linea in resultado['lineas']:
                 data_entrega.append([
                     linea['clasificacion'],
-                    f"{linea['cantidad_tara']:,.2f}",
-                    f"${linea['precio']:,.2f}",
-                    f"${linea['importe']:,.2f}",
+                    format_number(linea['cantidad_tara']),
+                    format_money(linea['precio']),
+                    format_money(linea['importe']),
                 ])
 
-            data_entrega.append(['Subtotal', '', '', f"${resultado['subtotal']:,.2f}"])
+            data_entrega.append(['Subtotal', '', '', format_money(resultado['subtotal'])])
 
             tabla_entrega = Table(data_entrega, colWidths=[usable_width * 0.3, usable_width * 0.2, usable_width * 0.2, usable_width * 0.3])
             tabla_entrega.setStyle(TableStyle([
@@ -203,9 +204,9 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
         data.append([
             articulo['descripcion'],
             articulo['presentacion'],
-            articulo['cantidad_total'],
-            f"${articulo['precio_venta_final']:.2f}",
-            f"${articulo['importe_total']:,.2f}"
+            format_number(articulo['cantidad_total']),
+            format_money(articulo['precio_venta_final']),
+            format_money(articulo['importe_total'])
         ])
     subtotal_articulos = resumen_financiero['gastos_articulos']
 
@@ -238,7 +239,7 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
             avance.avance.numero,
             avance.avance.descripcion,
             avance.avance.fecha.strftime("%d/%m/%Y"),
-            f"${avance.monto:,.2f}"
+            format_money(avance.monto)
         ])
     subtotal_avances = resumen_financiero['gastos_avances']
 
@@ -267,28 +268,28 @@ def generar_reporte_cosechero(request, cosechero_id,cosecha_id):
     total_gasto = resumen_financiero['gastos']
     total = resumen_financiero['saldo']
     resumen_data = [
-        ['Subtotal Artículos:', f"${subtotal_articulos:,.2f}"],
-        ['Subtotal Avances:', f"${subtotal_avances:,.2f}"],
-        ['Total Gasto:', f"${total_gasto:,.2f}"],
-        ['Total Produccion:', f"${subtotal_entregas:,.2f}"],
-        ['Tareas sembradas:', f"{resumen_financiero['tareas_sembradas']:,.2f}"],
+        ['Subtotal Artículos:', format_money(subtotal_articulos)],
+        ['Subtotal Avances:', format_money(subtotal_avances)],
+        ['Total Gasto:', format_money(total_gasto)],
+        ['Total Produccion:', format_money(subtotal_entregas)],
+        ['Tareas sembradas:', format_number(resumen_financiero['tareas_sembradas'])],
         [
             'Gasto por tarea:',
-            f"${resumen_financiero['gasto_promedio_tarea']:,.2f}"
+            format_money(resumen_financiero['gasto_promedio_tarea'])
             if resumen_financiero['gasto_promedio_tarea'] is not None else 'Sin tareas',
         ],
         [
             'Produccion por tarea:',
-            f"${resumen_financiero['produccion_promedio_tarea']:,.2f}"
+            format_money(resumen_financiero['produccion_promedio_tarea'])
             if resumen_financiero['produccion_promedio_tarea'] is not None else 'Sin tareas',
         ],
-        ['Quintales entregados:', f"{resumen_financiero['quintales_producidos']:,.2f} qq"],
+        ['Quintales entregados:', f"{format_number(resumen_financiero['quintales_producidos'])} qq"],
         [
             'Quintales por tarea:',
-            f"{resumen_financiero['quintales_promedio_tarea']:,.2f} qq"
+            f"{format_number(resumen_financiero['quintales_promedio_tarea'])} qq"
             if resumen_financiero['quintales_promedio_tarea'] is not None else 'Sin tareas',
         ],
-        ['Total Gastos  - Total Produccion:', f"${total:,.2f}"],
+        ['Total Gastos  - Total Produccion:', format_money(total)],
     ]
     tabla_resumen = Table(resumen_data, colWidths=[usable_width * 0.6, usable_width * 0.4])
     tabla_resumen.setStyle(TableStyle([
@@ -349,12 +350,13 @@ def _contexto_listado(request, form=None, modal_cosechero=None):
     busqueda = request.GET.get('q', '').strip()
     cosecheros = Cosechero.objects.filter(is_active=True).order_by('nombre', 'apellido')
     if busqueda:
-        cosecheros = cosecheros.filter(
-            Q(nombre__icontains=busqueda)
-            | Q(apellido__icontains=busqueda)
-            | Q(cedula__icontains=busqueda)
-            | Q(telefono__icontains=busqueda)
-        )
+        for termino in busqueda.split():
+            cosecheros = cosecheros.filter(
+                Q(nombre__icontains=termino)
+                | Q(apellido__icontains=termino)
+                | Q(cedula__icontains=termino)
+                | Q(telefono__icontains=termino)
+            )
 
     page_obj = Paginator(cosecheros, 25).get_page(request.GET.get('page'))
 

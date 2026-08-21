@@ -113,3 +113,31 @@ Durante la implementación, 29 pruebas relevantes pasaron en SQLite aislado. Los
 | Verificación | `RESTORE VERIFYONLY WITH CHECKSUM` correcta; tamaño y SHA-256 idénticos en ambas copias |
 
 Después de verificar las dos copias se detuvo exclusivamente el proceso Django PID `49680`, que ejecutaba `manage.py runserver 127.0.0.1:8000 --noreload`. El puerto 8000 quedó libre y el servicio `MSSQLSERVER` permaneció en ejecución. El reinicio del portal queda a cargo del operador desde la terminal de VS Code.
+
+## Despliegue del formato numérico uniforme — 2026-08-13
+
+- Es un cambio exclusivo de presentación; no contiene migraciones ni escrituras de datos y no exige backup de base.
+- Ejecutar `manage.py check`, `makemigrations --check --dry-run` y la suite completa.
+- No requiere recompilar Tailwind porque no incorpora clases nuevas.
+- En un despliegue con `DEBUG=False`, ejecutar `collectstatic --noinput` para publicar `static/js/number-format.js` antes de reiniciar Django.
+- Smoke visual: comprobar Dashboard, lista/detalle de Avances, Tickets, Ventas, Compras, Cosecheros y un PDF. Un valor de diez mil debe aparecer como `10,000.00`.
+- Verificar que los inputs y payloads continúen enviando `10000.00` sin coma.
+- Rollback: volver al commit anterior y repetir `collectstatic`; no restaurar SQL Server.
+
+## Corrección puntual del ticket de Demetrio Martínez — 2026-08-16
+
+Se corrigió exclusivamente el ticket `365067`, de Demetrio Martínez (`cosechero_id=20016`) en la cosecha `10002`. Se eliminaron las líneas `DetalleArticulo 334006` (35.00 tareas de Arada Corte) y `334007` (35.00 tareas de Arada Cruce), ambas a `270.00` por tarea. La rebaja fue `18,900.00` y el ticket pasó de `73,390.00` a `54,490.00`.
+
+La operación se ejecutó dentro de una transacción con bloqueo y precondiciones exactas. Se restituyeron 35.00 unidades a los lotes `170194` y `170195`, que quedaron en `8,422.00` y `6,717.00`, respectivamente. El ticket quedó con Arada Corte `45.00`, Arada Cruce `102.00`, Arada Sulcos `50.00`, un avance activo de `6,300.00` y `impreso=False`. Los detalles eliminados se verificaron ausentes y `manage.py check` terminó sin hallazgos.
+
+| Dato | Valor |
+|---|---|
+| Fecha local | 2026-08-16 13:50:41 (America/Santo_Domingo) |
+| Backup SQL Server | `C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\Backup\Tabacalera_pre_ajuste_demetrio_20260816_135040.bak` |
+| Copia operativa | `C:\Tabacalera\backups\Tabacalera_pre_ajuste_demetrio_20260816_135040.bak` |
+| Tamaño de cada copia | 1,486,848 bytes |
+| SHA-256 | `3145CC764C39D40D9920CB33F5FDF8C2A49915C03EE512F48EBC511572FEFB25` |
+| Opciones | `COPY_ONLY`, `CHECKSUM`, `COMPRESSION` |
+| Verificación | `RESTORE VERIFYONLY WITH CHECKSUM` correcta; tamaño y SHA-256 idénticos |
+
+Rollback de datos: restaurar este BAK exige detener el portal y descarta todos los movimientos posteriores al backup. Si existen movimientos posteriores, se debe preferir una corrección manual inversa y conservar evidencia.

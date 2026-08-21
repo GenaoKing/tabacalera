@@ -187,3 +187,15 @@ Registradas aquí para que no se vuelvan a introducir ni se pierda el rastro de 
 - **Alpine.js por página**, no hay estado global compartido entre templates — cada `{% block extra_js %}` define su propio `x-data`.
 - **Tema oscuro únicamente** — no hay soporte de modo claro ni variantes `dark:`; los componentes nuevos deben usar la paleta `slate-900/950` + acentos `tobacco-*` ya definida.
 - **Clase `.tw`** (`static_src/css/input.css`) se mantiene como convención de scoping. Desde 2026-08-08, las cuatro apps con pantallas operativas (`ventas`, `avance`, `cosecheros`, `compra`) están migradas y ya no quedan clases Bootstrap en sus templates.
+
+### 7.1 Formato numérico visible
+
+La presentación institucional de importes y cantidades decimales es `10,000.00`: coma para miles y exactamente dos decimales. La implementación se comparte entre capas:
+
+- Python, PDF, CSV y ticket térmico: `app.number_format.format_number()` y `format_money()`.
+- Templates Django: filtro `{% load number_format %}` / `number_2`.
+- Interfaces Alpine/JavaScript: `static/js/number-format.js`, cargado por `base.html`, expone `formatNumber()` y `formatMoney()`.
+
+La convención aplica a dinero, precios, cantidades de artículos, inventario, peso, tareas y quintales. No aplica a IDs, referencias, números de cheque ni conteos discretos. Tampoco cambia almacenamiento o cálculo: el dominio continúa usando `Decimal`.
+
+Los inputs `type="number"`, campos ocultos, JSON y contratos internos conservan la forma canónica sin separador (`10000.00`). Las comas se añaden solamente al presentar o generar un documento; enviarlas al servidor rompería el contrato numérico de HTML/JSON.

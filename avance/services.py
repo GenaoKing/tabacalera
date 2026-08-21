@@ -14,6 +14,7 @@ import pandas as pd
 from django.db import transaction
 
 from app.business_dates import proximo_sabado
+from app.number_format import format_number
 from avance.models import Avance
 from cosecheros.models import Cosechero, Cosecha
 from ventas.models import Venta, DetalleAvance
@@ -85,10 +86,10 @@ def parse_fecha(val) -> Optional[date]:
     """Intenta parsear una fecha de múltiples formatos."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
-    if isinstance(val, date):
-        return val
     if isinstance(val, datetime):
         return val.date()
+    if isinstance(val, date):
+        return val
     if hasattr(val, 'date'):  # pandas Timestamp
         return val.date()
 
@@ -97,12 +98,23 @@ def parse_fecha(val) -> Optional[date]:
         return None
 
     # Intentar varios formatos
-    for fmt in ('%d/%m/%Y', '%m/%d/%Y', '%Y-%m-%d', '%d-%m-%Y', '%m-%d-%y'):
+    for fmt in (
+        '%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%Y-%m-%d %H:%M:%S',
+        '%m/%d/%Y', '%m-%d-%y',
+    ):
         try:
             return datetime.strptime(s, fmt).date()
         except ValueError:
             continue
     return None
+
+
+def extraer_id_selector_cosechero(valor) -> Optional[int]:
+    """Extrae el ID de valores de plantilla con forma ``ID — Nombre``."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return None
+    match = re.match(r'^\s*(\d+)\s*[\-\u2013\u2014]\s*\S', str(valor))
+    return int(match.group(1)) if match else None
 
 
 def parse_fecha_from_filename(fname: str) -> Optional[date]:
@@ -175,6 +187,19 @@ def read_uploaded_file(fileobj) -> pd.DataFrame:
         columns=lambda c: COLUMN_ALIASES.get(c.strip().lower(), c),
         inplace=True
     )
+
+    # Ignorar filas que solo contienen notas fuera de la tabla (por ejemplo,
+    # las instrucciones visibles de la plantilla oficial).
+    import_columns = [
+        column for column in (
+            'Tipo', 'Monto', 'Fecha', 'ID', 'Cosechero', 'Numero',
+            'No. Cheque', 'No. Cuenta', 'No. de cuenta', 'Beneficiario',
+            'Descripcion',
+        ) if column in df.columns
+    ]
+    if import_columns:
+        df.dropna(how='all', subset=import_columns, inplace=True)
+        df.reset_index(drop=True, inplace=True)
 
     return df
 
@@ -311,7 +336,7 @@ def _build_row(
         'tipo_avance': tipo_avance,
         'numero': numero,
         'monto': str(monto) if monto else None,
-        'monto_display': f"{monto:,.2f}" if monto else 'inválido',
+        'monto_display': format_number(monto) if monto else 'inválido',
         'fecha': fecha.isoformat() if fecha else None,
         'fecha_display': fecha.strftime('%d/%m/%Y') if fecha else 'vacía',
         'descripcion': descripcion,
@@ -379,6 +404,15 @@ def _parse_cheques(df, cosecheros_by_id):
                     cosechero_nombre = f"{cosechero.nombre} {cosechero.apellido}".strip()
             except (ValueError, TypeError):
                 pass
+
+        # La fórmula de ID puede no tener un resultado en caché hasta que la
+        # hoja de cálculo recalcule. El selector conserva el ID como respaldo.
+        if cosechero_id is None:
+            selector_id = extraer_id_selector_cosechero(row.get('Cosechero'))
+            cosechero = cosecheros_by_id.get(selector_id)
+            if cosechero:
+                cosechero_id = cosechero.id
+                cosechero_nombre = f"{cosechero.nombre} {cosechero.apellido}".strip()
 
         fecha = parse_fecha(raw_fecha)
 
@@ -467,6 +501,15 @@ def _parse_unificado(df, cosecheros_by_id, cosecheros_by_cuenta):
                     cosechero_nombre = f"{cosechero.nombre} {cosechero.apellido}".strip()
             except (ValueError, TypeError):
                 pass
+
+        # La fórmula de ID puede no tener un resultado en caché hasta que la
+        # hoja de cálculo recalcule. El selector conserva el ID como respaldo.
+        if cosechero_id is None:
+            selector_id = extraer_id_selector_cosechero(row.get('Cosechero'))
+            cosechero = cosecheros_by_id.get(selector_id)
+            if cosechero:
+                cosechero_id = cosechero.id
+                cosechero_nombre = f"{cosechero.nombre} {cosechero.apellido}".strip()
 
         if cosechero_id is None and 'No. Cuenta' in df.columns:
             cuenta = limpiar_cuenta(row.get('No. Cuenta'))

@@ -7,6 +7,7 @@ urlpatterns = [
     path('', views.lista_avances, name='avances'),
     path('nuevo/', views.nuevo_avance, name='avance_nuevo'),
     path('importar/', views.upload_view, name='avances_importar'),
+    path('plantilla.xlsx', views.descargar_plantilla, name='avances_plantilla'),
     path('upload/', views.upload_redirect, name='avances_upload_legacy'),
     path('<int:avance_id>/', views.detalle_avance, name='avance_detalle'),
     path('<int:avance_id>/editar/', views.editar_avance, name='avance_editar'),

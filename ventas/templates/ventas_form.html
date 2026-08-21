@@ -142,12 +142,12 @@
                 </td>
                 <td class="text-right px-3 py-2">
                   <span class="text-sm font-mono text-emerald-400"
-                        x-text="'$' + Number(art.precio_venta).toFixed(2)"></span>
+                        x-text="formatMoney(art.precio_venta)"></span>
                 </td>
                 <td class="text-right px-3 py-2">
                   <span class="text-sm font-mono"
                         :class="art.inventario > 0 ? 'text-slate-300' : 'text-red-400'"
-                        x-text="art.inventario"></span>
+                      x-text="formatNumber(art.inventario)"></span>
                 </td>
                 <td class="text-center px-3 py-2">
                   <input type="number" :id="'cant-' + art.id" value="1" min="0.01" step="0.01"
@@ -212,11 +212,11 @@
             <tr class="border-t border-slate-800/60">
               <td class="px-5 py-2 text-sm text-white" x-text="item.descripcion"></td>
               <td class="text-right px-3 py-2 text-sm font-mono text-slate-300"
-                  x-text="'$' + Number(item.precio).toFixed(2)"></td>
+                  x-text="formatMoney(item.precio)"></td>
               <td class="text-center px-3 py-2 text-sm font-mono text-white"
-                  x-text="item.cantidad"></td>
+                  x-text="formatNumber(item.cantidad)"></td>
               <td class="text-right px-3 py-2 text-sm font-mono text-emerald-400"
-                  x-text="'$' + (item.precio * item.cantidad).toFixed(2)"></td>
+                  x-text="formatMoney(item.precio * item.cantidad)"></td>
               <td class="px-3 py-2 text-center">
                 <button type="button" @click="removerArticulo(idx)"
                         class="text-red-400/60 hover:text-red-400 transition">
@@ -290,7 +290,7 @@
                 <td class="text-center px-3 py-2 text-sm font-mono text-slate-300"
                     x-text="av.numero"></td>
                 <td class="text-right px-3 py-2 text-sm font-mono text-amber-400"
-                    x-text="'$' + Number(av.monto).toFixed(2)"></td>
+                    x-text="formatMoney(av.monto)"></td>
                 <td class="px-3 py-2 text-center">
                   <button type="button" @click="removerAvance(idx)"
                           class="text-red-400/60 hover:text-red-400 transition">
@@ -330,16 +330,16 @@
       <div class="flex items-center gap-6">
         <div>
           <p class="text-[10px] text-slate-500 uppercase tracking-wider">Total</p>
-          <p class="text-xl font-bold text-white font-mono" x-text="'$' + totalVenta.toFixed(2)"></p>
+          <p class="text-xl font-bold text-white font-mono" x-text="formatMoney(totalVenta)"></p>
         </div>
         <div class="hidden sm:flex gap-4 text-xs text-slate-500">
           <span>
             <span class="text-slate-400" x-text="carrito.length"></span> artículos:
-            <span class="text-slate-300 font-mono" x-text="'$' + totalArticulos.toFixed(2)"></span>
+            <span class="text-slate-300 font-mono" x-text="formatMoney(totalArticulos)"></span>
           </span>
           <span>
             <span class="text-slate-400" x-text="avances.length"></span> avances:
-            <span class="text-amber-400 font-mono" x-text="'$' + totalAvances.toFixed(2)"></span>
+            <span class="text-amber-400 font-mono" x-text="formatMoney(totalAvances)"></span>
           </span>
         </div>
       </div>
@@ -537,7 +537,7 @@ function ventaApp() {
 
       if (cantidad <= 0) return;
       if (cantidad > art.inventario) {
-        alert(`Stock insuficiente. Disponible: ${art.inventario}`);
+        alert(`Stock insuficiente. Disponible: ${formatNumber(art.inventario)}`);
         return;
       }
 

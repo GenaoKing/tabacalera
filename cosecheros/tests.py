@@ -125,6 +125,13 @@ class UniversoFinancieroTests(TestCase):
     def setUp(self):
         self.client.force_login(self.usuario)
 
+    def test_listado_busca_nombre_y_apellido_como_palabras(self):
+        respuesta = self.client.get(reverse('cosecheros'), {'q': 'Artículo Prueba'})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(list(respuesta.context['cosecheros']), [self.solo_articulo])
+        self.assertContains(respuesta, 'data-live-search-target="#cosecheros-results"')
+
     def filas(self):
         return {
             fila['cosechero'].id: fila
@@ -249,6 +256,20 @@ class UniversoFinancieroTests(TestCase):
         self.assertIsNone(fila['produccion_promedio_tarea'])
         self.assertIsNone(fila['quintales_promedio_tarea'])
         self.assertContains(respuesta, 'Sin tareas registradas', count=1)
+
+    def test_dashboard_y_csv_presentan_miles_con_dos_decimales(self):
+        detalle = DetalleArticulo.objects.get(venta__cosechero=self.solo_articulo)
+        detalle.cantidad = Decimal('800.00')
+        detalle.save(update_fields=['cantidad'])
+
+        dashboard = self.client.get(reverse('dashboard'), {'cosecha': self.cosecha.id})
+        csv_response = self.client.get(reverse('dashboard_csv'), {'cosecha': self.cosecha.id})
+        filas_csv = list(csv.DictReader(io.StringIO(csv_response.content.decode('utf-8-sig'))))
+        articulo_csv = next(f for f in filas_csv if int(f['Cosechero ID']) == self.solo_articulo.id)
+
+        self.assertContains(dashboard, '$10,000.00')
+        self.assertEqual(articulo_csv['Artículos'], '10,000.00')
+        self.assertEqual(articulo_csv['Gastos'], '10,000.00')
 
     def test_pdf_individual_se_genera_desde_el_resumen_comun(self):
         respuesta = self.client.get(reverse(

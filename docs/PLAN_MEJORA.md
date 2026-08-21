@@ -19,6 +19,29 @@
 | Identidad visual corporativa | Completada | `4e53cb2`, logo canónico en portal, login, favicon, Admin, PDF y ticket; rutas server-side centralizadas |
 | Soporte de correcciones de entregas | Completada | `13a5912`, `EntregaTabaco` visible y buscable en Admin; corrección 60117 auditada |
 | CRUD operativo de avances | Completada en código | tabla paginada, alta idempotente, edición/movimiento transaccional, soft-delete contable y vinculación manual |
+| Corrección controlada de tickets | Pendiente | propuesta definida a partir del ajuste de Demetrio Martínez; requiere auditoría e inventario trazable |
+
+## Fase 13 — Corrección controlada de tickets (TODO)
+
+**Objetivo:** permitir correcciones operativas desde Tickets sin convertir la interfaz en una edición libre de filas ni perder trazabilidad financiera o de inventario.
+
+Alcance inicial recomendado:
+
+- [ ] Añadir **Corregir ticket** desde la lista y el detalle, inicialmente para reducir cantidades o retirar líneas de artículos.
+- [ ] Mostrar cantidad y total anteriores, ajuste solicitado, valores resultantes e impacto completo sobre el ticket antes de confirmar.
+- [ ] Exigir motivo, usuario autenticado y confirmación explícita; toda modificación será `POST`, con CSRF, transacción y bloqueo del ticket.
+- [ ] Crear una auditoría inmutable de cabecera y líneas con usuario, fecha, motivo, valores antes/después y diferencia monetaria.
+- [ ] Recalcular el ticket y todos sus consumidores, y marcar `Venta.impreso=False` después de una corrección.
+- [ ] Mantener los avances en su CRUD dedicado; desde el ticket solo se ofrecerá el enlace correspondiente.
+- [ ] Resolver la trazabilidad entre `DetalleArticulo` y el lote FIFO. El modelo actual crea una fila por lote consumido, pero no conserva el `DetalleCompra` que la originó.
+- [ ] Definir un movimiento de devolución/ajuste de inventario para artículos históricos sin lote identificable y evitar devoluciones arbitrarias.
+- [ ] Distinguir artículos físicos de servicios como arada mediante una regla explícita (`controla_inventario` o tipo equivalente), para que los servicios ajusten la cuenta sin simular existencias.
+- [ ] Proteger contra doble envío y concurrencia, y probar reducción parcial, eliminación completa, múltiples lotes, ticket impreso, rollback y paridad con Dashboard/PDF.
+- [ ] Crear backup verificado antes de las migraciones y documentar arquitectura, decisiones y rollback.
+
+Extensiones posteriores, fuera del primer alcance: cambio de precio, incorporación de artículos y traslado de líneas entre ticket, cosechero, cosecha o semana.
+
+**Caso que originó el TODO:** ticket `365067` de Demetrio Martínez. El 2026-08-16 se retiraron dos líneas independientes de 35.00 tareas —Arada Corte y Arada Cruce— mediante una corrección puntual respaldada y verificada. Esta intervención no sustituye la auditoría que deberá incorporar la futura vista.
 
 ## Fase 12 — CRUD operativo de avances
 
@@ -228,3 +251,15 @@ Este pendiente quedó resuelto por las fases de Dashboard financiero y universo 
 | Bugs de correctness abiertos (Fase 3) | Checklist de este documento | 7 identificados | 0; las decisiones contables futuras se mantienen separadas de los bugs |
 
 **Instrumentación vigente**: mantener pruebas `assertNumQueries` para los servicios críticos; el universo financiero se valida con seis consultas constantes.
+
+---
+
+## Mejora transversal — Formato numérico uniforme (2026-08-13)
+
+- [x] Centralizar en Python el formato `10,000.00` para PDF, CSV, comandos y ticket térmico.
+- [x] Crear un filtro Django reutilizable y aplicarlo a Dashboard, Tickets, Avances y Cosecheros.
+- [x] Crear un formateador JavaScript local y aplicarlo a Ventas, Compras, Tickets e importador de avances.
+- [x] Mantener inputs, JSON y persistencia sin comas para no mezclar presentación con contratos de datos.
+- [x] Cubrir miles, dos decimales, negativos y filtro de template mediante pruebas automatizadas.
+
+No requiere migración ni modifica datos productivos. Evidencia esperada: `10,000.00`, `1,234.57` y `-2,500.50` se presentan igual en todas las salidas humanas.

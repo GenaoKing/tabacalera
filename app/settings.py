@@ -47,7 +47,7 @@ SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 DEBUG = _entorno_bool('DJANGO_DEBUG', False)
 
 ALLOWED_HOSTS = [
-    host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,100.83.50.26').split(',')
     if host.strip()
 ]
 

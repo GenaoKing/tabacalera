@@ -246,11 +246,11 @@ window.compraPage = function () {
         },
 
         numero(valor) {
-            return new Intl.NumberFormat('es-DO', { maximumFractionDigits: 2 }).format(Number(valor || 0));
+            return formatNumber(valor);
         },
 
         moneda(valor) {
-            return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(Number(valor || 0));
+            return formatMoney(valor, 'RD$ ');
         },
     };
 };

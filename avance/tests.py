@@ -1,11 +1,13 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 import uuid
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from openpyxl import load_workbook
 
 from cosecheros.models import Cosecha, Cosechero
 from cosecheros.services import calcular_resumenes_cosecha
@@ -13,7 +15,100 @@ from ventas.models import DetalleAvance, OperacionVenta, Venta
 from ventas.services import obtener_detalles_venta
 
 from .models import Avance
-from .services import import_confirmed_rows
+from .excel import TEMPLATE_ROWS, generar_plantilla_avances
+from .services import import_confirmed_rows, parse_fecha, parse_file_for_preview
+
+
+class PlantillaAvancesTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.usuario = get_user_model().objects.create_user('plantilla', password='prueba')
+        cls.activo = Cosechero.objects.create(
+            nombre='Ana', apellido='Duplicada', cedula='', numero_cuenta_banco='12345',
+            direccion='Local', telefono='', terreno_sembrado=Decimal('10.00'),
+        )
+        cls.duplicado = Cosechero.objects.create(
+            nombre='Ana', apellido='Duplicada', cedula='', numero_cuenta_banco='67890',
+            direccion='Local', telefono='', terreno_sembrado=Decimal('11.00'),
+        )
+        cls.inactivo = Cosechero.objects.create(
+            nombre='Fuera', apellido='Catalogo', cedula='', numero_cuenta_banco=None,
+            direccion='Local', telefono='', terreno_sembrado=Decimal('1.00'),
+            is_active=False,
+        )
+
+    def test_descarga_requiere_autenticacion(self):
+        response = self.client.get(reverse('avances_plantilla'))
+
+        self.assertEqual(response.status_code, 302)
+
+    def test_descarga_contiene_catalogo_formato_y_validaciones(self):
+        self.client.force_login(self.usuario)
+        response = self.client.get(reverse('avances_plantilla'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertIn('plantilla_avances_', response['Content-Disposition'])
+
+        workbook = load_workbook(BytesIO(b''.join(response.streaming_content)), data_only=False)
+        self.assertEqual(workbook.sheetnames, ['Avances', 'Catalogo'])
+        sheet = workbook['Avances']
+        catalog = workbook['Catalogo']
+        self.assertEqual(catalog.sheet_state, 'hidden')
+        self.assertEqual(
+            [sheet.cell(1, column).value for column in range(1, 8)],
+            ['Tipo', 'Numero', 'Fecha', 'Cosechero', 'ID', 'Monto', 'Descripcion'],
+        )
+        self.assertEqual(sheet.freeze_panes, 'A2')
+        self.assertEqual(sheet['C2'].number_format, '@')
+        self.assertEqual(sheet['F2'].number_format, '"RD$" #,##0.00')
+        self.assertIn('VLOOKUP(D2', sheet['E2'].value)
+        self.assertTrue(sheet.protection.sheet)
+        self.assertTrue(sheet['E2'].protection.locked)
+        self.assertFalse(sheet['D2'].protection.locked)
+        self.assertEqual(sheet.max_row, TEMPLATE_ROWS + 1)
+        self.assertEqual(len(sheet.data_validations.dataValidation), 4)
+        date_validation = next(
+            validation for validation in sheet.data_validations.dataValidation
+            if 'C2:C501' in str(validation.sqref)
+        )
+        self.assertEqual(date_validation.type, 'custom')
+        self.assertIn('TEXT(DATE(', date_validation.formula1)
+
+        selectors = [catalog.cell(row, 1).value for row in range(2, catalog.max_row + 1)]
+        self.assertIn(f'{self.activo.id} — Ana Duplicada', selectors)
+        self.assertIn(f'{self.duplicado.id} — Ana Duplicada', selectors)
+        self.assertNotIn(f'{self.inactivo.id} — Fuera Catalogo', selectors)
+
+    def test_plantilla_se_parsea_sin_resultado_calculado_de_formula(self):
+        archivo = generar_plantilla_avances()
+        workbook = load_workbook(archivo, data_only=False)
+        sheet = workbook['Avances']
+        sheet['A2'] = 'Efectivo'
+        sheet['B2'] = 'EF-1'
+        sheet['C2'] = '08-11-2026'
+        sheet['D2'] = f'{self.activo.id} — Ana Duplicada'
+        sheet['F2'] = Decimal('125.50')
+        salida = BytesIO()
+        workbook.save(salida)
+        salida.name = 'plantilla_avances.xlsx'
+        salida.seek(0)
+
+        preview = parse_file_for_preview(salida)
+
+        self.assertEqual(preview['formato'], 'unificado')
+        self.assertEqual(preview['total_rows'], 1)
+        self.assertEqual(preview['rows'][0]['cosechero_id'], self.activo.id)
+        self.assertEqual(preview['rows'][0]['fecha'], '2026-11-08')
+        self.assertEqual(Decimal(preview['rows'][0]['monto']), Decimal('125.50'))
+
+    def test_fecha_textual_prioriza_dia_mes(self):
+        self.assertEqual(parse_fecha('04-08-2026'), date(2026, 8, 4))
+        self.assertEqual(parse_fecha('04/08/2026'), date(2026, 8, 4))
+        self.assertIsNone(parse_fecha('31-02-2026'))
 
 
 class ImportacionAvancesCosechaTests(TestCase):

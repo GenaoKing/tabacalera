@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load number_format %}
 {% block page_title %}Dashboard financiero{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-7xl space-y-6">
@@ -15,7 +16,7 @@
 
   {% if sin_produccion %}
   <div class="flex flex-col gap-3 rounded-xl border border-amber-600/40 bg-amber-950/30 p-4 sm:flex-row sm:items-center">
-    <div class="flex-1"><p class="text-sm font-semibold text-amber-200">{{ sin_produccion|length }} cuenta{{ sin_produccion|length|pluralize }} con gastos y sin producción entregada</p><p class="mt-1 text-xs text-amber-300/70">Representan ${{ total_sin_produccion|floatformat:2 }} dentro del total que nos deben.</p></div>
+    <div class="flex-1"><p class="text-sm font-semibold text-amber-200">{{ sin_produccion|length }} cuenta{{ sin_produccion|length|pluralize }} con gastos y sin producción entregada</p><p class="mt-1 text-xs text-amber-300/70">Representan ${{ total_sin_produccion|number_2 }} dentro del total que nos deben.</p></div>
     <a href="?cosecha={{ cosecha.id }}&sin_produccion=1" class="rounded-lg border border-amber-600/40 px-3 py-2 text-center text-sm text-amber-200 hover:bg-amber-900/40">Ver solo estas cuentas</a>
   </div>
   {% endif %}
@@ -25,9 +26,9 @@
   {% endif %}
 
   <div class="grid gap-4 md:grid-cols-3">
-    <div class="rounded-xl border border-amber-700/30 bg-amber-950/20 p-5"><p class="text-xs uppercase tracking-wider text-amber-300/70">Cosecheros nos deben</p><p class="mt-2 font-mono text-2xl font-bold text-amber-300">${{ total_nos_deben|floatformat:2 }}</p><p class="mt-1 text-xs text-slate-500">{{ nos_deben|length }} cosecheros</p></div>
-    <div class="rounded-xl border border-blue-700/30 bg-blue-950/20 p-5"><p class="text-xs uppercase tracking-wider text-blue-300/70">Les debemos</p><p class="mt-2 font-mono text-2xl font-bold text-blue-300">${{ total_les_debemos|floatformat:2 }}</p><p class="mt-1 text-xs text-slate-500">{{ les_debemos|length }} cosecheros</p></div>
-    <div class="rounded-xl border border-emerald-700/30 bg-emerald-950/20 p-5"><p class="text-xs uppercase tracking-wider text-emerald-300/70">Balance neto</p><p class="mt-2 font-mono text-2xl font-bold text-emerald-300">${{ balance_neto|floatformat:2 }}</p><p class="mt-1 text-xs text-slate-500">Gastos menos producción</p></div>
+    <div class="rounded-xl border border-amber-700/30 bg-amber-950/20 p-5"><p class="text-xs uppercase tracking-wider text-amber-300/70">Cosecheros nos deben</p><p class="mt-2 font-mono text-2xl font-bold text-amber-300">${{ total_nos_deben|number_2 }}</p><p class="mt-1 text-xs text-slate-500">{{ nos_deben|length }} cosecheros</p></div>
+    <div class="rounded-xl border border-blue-700/30 bg-blue-950/20 p-5"><p class="text-xs uppercase tracking-wider text-blue-300/70">Les debemos</p><p class="mt-2 font-mono text-2xl font-bold text-blue-300">${{ total_les_debemos|number_2 }}</p><p class="mt-1 text-xs text-slate-500">{{ les_debemos|length }} cosecheros</p></div>
+    <div class="rounded-xl border border-emerald-700/30 bg-emerald-950/20 p-5"><p class="text-xs uppercase tracking-wider text-emerald-300/70">Balance neto</p><p class="mt-2 font-mono text-2xl font-bold text-emerald-300">${{ balance_neto|number_2 }}</p><p class="mt-1 text-xs text-slate-500">Gastos menos producción</p></div>
   </div>
 
   {% if solo_sin_produccion %}<div class="flex items-center justify-between rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-300"><span>Filtro activo: sin producción entregada</span><a href="?cosecha={{ cosecha.id }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="text-blue-300">Quitar filtro</a></div>{% endif %}

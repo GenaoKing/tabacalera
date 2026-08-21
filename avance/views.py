@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Prefetch, Q, Sum
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.dateparse import parse_date
@@ -21,6 +21,7 @@ from cosecheros.models import Cosecha
 from ventas.models import DetalleAvance
 
 from .forms import AvanceForm, FileUploadForm, VincularAvanceForm
+from .excel import generar_plantilla_avances
 from .models import Avance
 from .services import (
     actualizar_avance,
@@ -276,6 +277,19 @@ def upload_view(request):
         'form': FileUploadForm(),
         'cosechas_json': json.dumps(cosechas),
     })
+
+
+@login_required
+@require_http_methods(["GET"])
+def descargar_plantilla(request):
+    """Descarga la plantilla XLSX con el catálogo vigente de cosecheros."""
+    filename = f'plantilla_avances_{date.today():%d-%m-%Y}.xlsx'
+    return FileResponse(
+        generar_plantilla_avances(),
+        as_attachment=True,
+        filename=filename,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 
 @login_required

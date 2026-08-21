@@ -114,7 +114,7 @@
               <p class="text-xs text-slate-500" x-text="articulo.presentacion"></p>
             </div>
             <p class="hidden text-right font-mono text-sm text-emerald-400 sm:block" x-text="moneda(articulo.precio_venta)"></p>
-            <p class="hidden text-right font-mono text-sm text-slate-400 sm:block" x-text="articulo.inventario"></p>
+            <p class="hidden text-right font-mono text-sm text-slate-400 sm:block" x-text="numero(articulo.inventario)"></p>
             <button type="button" @click="agregarArticulo(articulo)" :disabled="articulo.inventario <= 0"
                     class="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-600/40 disabled:cursor-not-allowed disabled:opacity-30">Agregar</button>
           </div>
@@ -318,7 +318,8 @@ function ventaApp() {
       if (!this.movimientosValidos) return 'Revise cantidades y montos';
       return 'Listo para guardar';
     },
-    moneda(valor) { return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(Number(valor || 0)); },
+    numero(valor) { return formatNumber(valor); },
+    moneda(valor) { return formatMoney(valor, 'RD$ '); },
     formatearFecha(valor) { return valor ? new Date(`${valor}T12:00:00`).toLocaleDateString('es-DO') : ''; },
     nuevaClave() {
       if (window.crypto?.randomUUID) return crypto.randomUUID();
@@ -372,7 +373,7 @@ function ventaApp() {
     validarCantidad(item) {
       item.cantidad = Math.round(Number(item.cantidad) * 100) / 100;
       if (!Number.isFinite(item.cantidad) || item.cantidad <= 0) item.cantidad = 0.01;
-      if (item.cantidad > item.maximo) { item.cantidad = item.maximo; this.avisar(`La existencia máxima de ${item.descripcion} es ${item.maximo}.`, 'warning'); }
+      if (item.cantidad > item.maximo) { item.cantidad = item.maximo; this.avisar(`La existencia máxima de ${item.descripcion} es ${this.numero(item.maximo)}.`, 'warning'); }
       const articulo = this.articulos.find(a => a.id === item.id);
       if (articulo) articulo.inventario = Math.max(0, Number(item.maximo) - Number(item.cantidad));
     },

@@ -1,4 +1,6 @@
 {% extends 'base.html' %}
+{% load static %}
+{% load number_format %}
 {% block page_title %}Tickets de Venta{% endblock %}
 
 {% block content %}
@@ -18,7 +20,9 @@
 
   </div>
 
-  <form method="get" class="grid gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 md:grid-cols-5">
+  <form method="get" action="{% url 'tickets' %}"
+        data-live-search-target="#tickets-results"
+        class="grid gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 md:grid-cols-5">
     <select name="cosecha" class="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white">
       <option value="">Todas las cosechas</option>
       {% for cosecha in cosechas %}<option value="{{ cosecha.id }}" {% if cosecha_seleccionada == cosecha.id %}selected{% endif %}>{{ cosecha }}</option>{% endfor %}
@@ -30,6 +34,7 @@
   </form>
 
   {# ── Tabla de Ventas ── #}
+  <div id="tickets-results" class="space-y-6 transition-opacity" aria-live="polite">
   <div class="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden">
     <div class="overflow-x-auto">
       <table class="w-full">
@@ -60,7 +65,7 @@
             <td class="px-3 py-3 text-sm text-slate-400">{{ venta.cosecha }}</td>
             <td class="px-3 py-3 text-sm text-slate-300 font-mono">{{ venta.fecha_venta|date:"d/m/Y" }}</td>
             <td class="text-right px-3 py-3 text-sm font-mono text-emerald-400">
-              ${{ venta.total|floatformat:2 }}
+              ${{ venta.total|number_2 }}
             </td>
             <td class="text-center px-3 py-3">
               {% if venta.impreso %}
@@ -113,6 +118,7 @@
     </div>
   </nav>
   {% endif %}
+  </div>
 
   {# ══════════════════════════════════════════════
      MODAL: Detalle de Venta
@@ -150,7 +156,7 @@
           <div>
             <p class="text-xs text-slate-500">Total</p>
             <p class="text-sm text-emerald-400 mt-0.5 font-mono font-bold"
-               x-text="'$' + Number(detalleVenta.total || 0).toFixed(2)"></p>
+               x-text="formatMoney(detalleVenta.total || 0)"></p>
           </div>
         </div>
 
@@ -162,10 +168,10 @@
               <div class="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-800/50">
                 <div>
                   <span class="text-sm text-white" x-text="d.descripcion"></span>
-                  <span class="text-xs text-slate-500 ml-1" x-text="'x' + d.cantidad_total"></span>
+                  <span class="text-xs text-slate-500 ml-1" x-text="'x' + formatNumber(d.cantidad_total)"></span>
                 </div>
                 <span class="text-sm font-mono text-emerald-400"
-                      x-text="'$' + Number(d.importe_total || (d.cantidad_total * d.precio_venta_final)).toFixed(2)"></span>
+                      x-text="formatMoney(d.importe_total || (d.cantidad_total * d.precio_venta_final))"></span>
               </div>
             </template>
           </div>
@@ -187,7 +193,7 @@
                   <span class="text-sm text-white" x-text="a.descripcion"></span>
                 </div>
                 <span class="text-sm font-mono text-amber-400"
-                      x-text="'$' + Number(a.monto_pagado).toFixed(2)"></span>
+                      x-text="formatMoney(a.monto_pagado)"></span>
               </div>
             </template>
           </div>
@@ -203,6 +209,7 @@
   </div>
 
 </div>
+<script src="{% static 'js/live-search.js' %}"></script>
 {% endblock %}
 
 {% block extra_js %}

@@ -74,3 +74,11 @@
 - El logo se usa en sidebar, login, favicon, Django Admin, PDF individual y ticket térmico.
 - Las salidas del servidor no deben abrir `logo.png` mediante una ruta relativa; deben usar `app.branding.get_brand_logo_path()`.
 - El login y el resto del portal mantienen los recursos visuales locales, sin cargar fuentes ni imágenes externas.
+
+## Presentación numérica
+
+- Todo importe o cantidad decimal visible usa `10,000.00`, incluso cuando su parte decimal sea cero.
+- El símbolo monetario se conserva según el contexto (`$` o `RD$`); la regla común afecta el número, no la semántica de la moneda.
+- IDs, números de documentos y conteos de filas no reciben decimales ni separadores monetarios.
+- El formato no entra en la lógica financiera: modelos, formularios, APIs y cálculos mantienen `Decimal` o cadenas numéricas canónicas sin comas.
+- Los CSV operativos son documentos para lectura humana y presentan las columnas decimales con la misma convención; `csv.writer` entrecomilla los valores que contienen coma.

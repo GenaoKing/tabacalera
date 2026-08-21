@@ -146,6 +146,23 @@ class VentaSeguraTests(TestCase):
         self.assertEqual(respuesta.json()['venta_id'], resultado['venta'].id)
         self.assertEqual(respuesta.json()['total'], '37.50')
 
+    def test_ticket_formatea_miles_pero_api_conserva_numero_canonico(self):
+        venta = Venta.objects.create(
+            cosechero=self.cosechero, cosecha=self.cosecha,
+            fecha_venta=date(2026, 8, 8), total=Decimal('10000.00'),
+        )
+
+        tickets = self.client.get(reverse('tickets'), {'cosecha': self.cosecha.id})
+        resumen = self.client.get(reverse('resumen_semanal'), {
+            'cosechero': self.cosechero.id,
+            'cosecha': self.cosecha.id,
+            'fecha': '2026-08-04',
+        })
+
+        self.assertContains(tickets, '$10,000.00')
+        self.assertEqual(resumen.json()['venta_id'], venta.id)
+        self.assertEqual(resumen.json()['total'], '10000.00')
+
     def test_tickets_pagina_cincuenta_y_conserva_filtros(self):
         Venta.objects.bulk_create([
             Venta(
@@ -160,6 +177,19 @@ class VentaSeguraTests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(len(respuesta.context['ventas']), 50)
         self.assertContains(respuesta, 'q=Prueba')
+
+    def test_tickets_busca_nombre_y_apellido_como_palabras(self):
+        Venta.objects.create(
+            cosechero=self.cosechero, cosecha=self.cosecha,
+            fecha_venta=date(2026, 8, 8), total=Decimal('10.00'),
+        )
+        respuesta = self.client.get(reverse('tickets'), {
+            'cosecha': self.cosecha.id, 'q': 'Prueba Semanal',
+        })
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(list(respuesta.context['ventas']), list(Venta.objects.all()))
+        self.assertContains(respuesta, 'data-live-search-target="#tickets-results"')
 
 
 class VentaConcurrenteTests(TransactionTestCase):

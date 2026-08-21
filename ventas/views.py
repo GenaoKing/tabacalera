@@ -19,6 +19,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from app.branding import get_brand_logo_path
 from app.business_dates import proximo_sabado
+from app.number_format import format_money, format_number
 from articulo.models import Articulo
 from cosecheros.models import Cosechero, Cosecha
 from proveedor.models import Proveedor
@@ -99,16 +100,16 @@ def _imprimir_ticket(request, venta: Venta):
 
             p.set(bold=True)
             p.text("\nDetalles de Artículos:\n")
-            p.text("Artículo              Cant.   Precio    Subtotal\n")
+            p.text("Artículo           Cant.    Precio    Subtotal\n")
             p.text("------------------------------------------------\n")
             p.set(bold=False)
 
             for d in agrupados:
                 desc = f"{d['articulo'].presentacion} {d['articulo'].descripcion}"
                 p.text(
-                    f"{desc[:19]:19} {d['cantidad_total']:5}     "
-                    f"{d['precio_venta_final']:5.2f}   "
-                    f"{d['cantidad_total'] * d['precio_venta_final']:7.2f}\n"
+                    f"{desc[:15]:15} {format_number(d['cantidad_total']):>8} "
+                    f"{format_number(d['precio_venta_final']):>9} "
+                    f"{format_number(d['cantidad_total'] * d['precio_venta_final']):>11}\n"
                 )
 
         # Avances
@@ -124,11 +125,11 @@ def _imprimir_ticket(request, venta: Venta):
                 p.text(
                     f"{a.tipo_avance:8}  {a.descripcion:15} "
                     f"{a.fecha.strftime('%d/%m/%Y') if a.fecha else 'N/A':10} "
-                    f"{da.monto}\n"
+                    f"{format_number(da.monto)}\n"
                 )
 
         p.set(bold=True, align='center', double_height=True, double_width=True)
-        p.text(f"\nTotal: {venta.total}\n")
+        p.text(f"\nTotal: {format_money(venta.total)}\n")
 
         p.set(align='left', bold=False, double_height=False, double_width=False)
         p.text("\n\nRecibido por:\n\n")
@@ -260,10 +261,11 @@ def get_tickets(request):
     desde = request.GET.get('desde', '').strip()
     hasta = request.GET.get('hasta', '').strip()
     if q:
-        ventas = ventas.filter(
-            Q(cosechero__nombre__icontains=q)
-            | Q(cosechero__apellido__icontains=q)
-        )
+        for termino in q.split():
+            ventas = ventas.filter(
+                Q(cosechero__nombre__icontains=termino)
+                | Q(cosechero__apellido__icontains=termino)
+            )
     if desde:
         ventas = ventas.filter(fecha_venta__gte=desde)
     if hasta:

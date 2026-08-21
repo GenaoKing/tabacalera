@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 
+from app.number_format import format_number
 from cosecheros.models import Cosecha
 from cosecheros.services import calcular_saldos_cosecha
 
@@ -77,20 +78,20 @@ def exportar_csv(request):
         writer.writerow([
             fila['cosechero'].id,
             str(fila['cosechero']),
-            f"{fila['gastos_articulos']:.2f}",
-            f"{fila['gastos_avances']:.2f}",
-            f"{fila['gastos']:.2f}",
-            f"{fila['produccion']:.2f}",
-            f"{fila['saldo']:.2f}",
+            format_number(fila['gastos_articulos']),
+            format_number(fila['gastos_avances']),
+            format_number(fila['gastos']),
+            format_number(fila['produccion']),
+            format_number(fila['saldo']),
             estado,
             fila['cantidad_entregas'],
             'Sí' if fila['sin_produccion_entregada'] else 'No',
             fila['entregas_sin_precio'],
-            f"{fila['tareas_sembradas']:.2f}",
-            f"{fila['gasto_promedio_tarea']:.2f}" if fila['gasto_promedio_tarea'] is not None else '',
-            f"{fila['produccion_promedio_tarea']:.2f}" if fila['produccion_promedio_tarea'] is not None else '',
-            f"{fila['quintales_producidos']:.2f}",
-            f"{fila['quintales_promedio_tarea']:.2f}" if fila['quintales_promedio_tarea'] is not None else '',
+            format_number(fila['tareas_sembradas']),
+            format_number(fila['gasto_promedio_tarea']) if fila['gasto_promedio_tarea'] is not None else '',
+            format_number(fila['produccion_promedio_tarea']) if fila['produccion_promedio_tarea'] is not None else '',
+            format_number(fila['quintales_producidos']),
+            format_number(fila['quintales_promedio_tarea']) if fila['quintales_promedio_tarea'] is not None else '',
             fila['ultima_actividad_fecha'].isoformat() if fila['ultima_actividad_fecha'] else '',
             fila['ultima_actividad_etiqueta'],
             fila['ultima_actividad_precision'] or '',

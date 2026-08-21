@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load number_format %}
 {% block page_title %}Avances{% endblock %}
 {% block page_title_bar %}Avances{% endblock %}
 
@@ -23,7 +24,7 @@
     </div>
     <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
       <p class="text-xs uppercase tracking-wider text-slate-500">Monto filtrado</p>
-      <p class="mt-1 text-2xl font-bold text-emerald-400">RD$ {{ resumen.total|default:0|floatformat:2 }}</p>
+      <p class="mt-1 text-2xl font-bold text-emerald-400">RD$ {{ resumen.total|default:0|number_2 }}</p>
     </div>
   </div>
 
@@ -108,7 +109,7 @@
             <td class="px-4 py-3"><p class="text-sm text-slate-300">{{ avance.get_tipo_avance_display }}</p><p class="text-xs font-mono text-slate-500">{{ avance.numero|default:'Sin referencia' }}</p></td>
             <td class="max-w-[260px] px-4 py-3 text-sm text-slate-400"><p class="truncate" title="{{ avance.descripcion|default:'' }}">{{ avance.descripcion|default:'—' }}</p></td>
             <td class="px-4 py-3"><span class="rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-300">{{ avance.get_estado_display }}</span>{% if not avance.is_active %}<span class="ml-1 rounded-full bg-slate-700 px-2 py-1 text-xs text-slate-300">Desactivado</span>{% endif %}</td>
-            <td class="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-emerald-400">RD$ {{ avance.monto_pagado|floatformat:2 }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-right font-mono text-sm font-semibold text-emerald-400">RD$ {{ avance.monto_pagado|number_2 }}</td>
             <td class="px-4 py-3"><div class="flex justify-end gap-2">
               <a href="{% url 'avance_detalle' avance.id %}" class="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300">Ver</a>
               {% if avance.is_active and avance.vinculos|length <= 1 %}<a href="{% url 'avance_editar' avance.id %}" class="rounded border border-slate-700 px-2.5 py-1.5 text-xs text-blue-300">Editar</a>{% endif %}

@@ -1,18 +1,25 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from .forms import ProveedorForm
 from .models import Proveedor
+from articulo.models import Articulo
 
 
 @login_required
 def lista(request):
     q = request.GET.get('q', '').strip()
-    objetos = Proveedor.objects.filter(is_active=True).order_by('nombre')
+    objetos = Proveedor.objects.filter(is_active=True).prefetch_related(
+        Prefetch(
+            'articulo_set',
+            queryset=Articulo.objects.filter(is_active=True).order_by('descripcion'),
+            to_attr='articulos_activos',
+        )
+    ).order_by('nombre')
     if q:
         objetos = objetos.filter(Q(nombre__icontains=q) | Q(correo_electronico__icontains=q))
     return render(request, 'proveedores/lista.html', {'objetos': objetos, 'q': q})

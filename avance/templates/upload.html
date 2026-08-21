@@ -31,8 +31,16 @@
   <!-- PASO 1: Upload + cosecha -->
   <div x-show="currentStep === 0" x-transition>
     <div class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8">
-      <h2 class="text-lg font-semibold text-white mb-1">Subir archivo de avances</h2>
-      <p class="text-sm text-slate-400 mb-6">CSV o XLSX. El sistema detecta el tipo automaticamente.</p>
+      <div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
+        <div>
+          <h2 class="text-lg font-semibold text-white mb-1">Subir archivo de avances</h2>
+          <p class="text-sm text-slate-400">CSV o XLSX. El sistema detecta el tipo automaticamente.</p>
+        </div>
+        <a href="{% url 'avances_plantilla' %}"
+           class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors">
+          Descargar plantilla actualizada
+        </a>
+      </div>
 
       <div class="mb-6 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">
         <label class="block text-sm font-medium text-slate-300 mb-2">Cosecha</label>
@@ -268,7 +276,7 @@ function avanceImporter() {
       else{row.status='error';row.status_msg='Falta: '+e.join(', ');}
     },
     countSelected() { return this.previewData?.rows?.filter(r=>r.selected).length||0; },
-    totalSeleccionado() { const t=(this.previewData?.rows||[]).filter(r=>r.selected&&r.monto).reduce((s,r)=>s+parseFloat(r.monto),0); return t.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); },
+    totalSeleccionado() { const t=(this.previewData?.rows||[]).filter(r=>r.selected&&r.monto).reduce((s,r)=>s+parseFloat(r.monto),0); return formatNumber(t); },
     backToUpload() { this.currentStep=0;this.previewData=null; },
     async confirmImport() {
       const sel=this.previewData.rows.filter(r=>r.selected); if(!sel.length)return;

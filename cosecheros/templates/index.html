@@ -1,4 +1,6 @@
 {% extends 'base.html' %}
+{% load static %}
+{% load number_format %}
 
 {% block page_title %}Cosecheros{% endblock %}
 {% block page_title_bar %}Cosecheros{% endblock %}
@@ -69,7 +71,9 @@
 
     <section class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow-xl shadow-black/10">
         <div class="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <form method="get" class="relative w-full max-w-md">
+            <form method="get" action="{% url 'cosecheros' %}"
+                  data-live-search-target="#cosecheros-results"
+                  class="relative w-full max-w-md">
                 {% if cosecha_seleccionada %}<input type="hidden" name="cosecha" value="{{ cosecha_seleccionada.id }}">{% endif %}
                 <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>
@@ -86,11 +90,12 @@
                 {% endif %}
             </form>
 
-            <p class="text-sm text-slate-500">
+            <p data-live-search-sync="cosecheros-count" class="text-sm text-slate-500">
                 {{ page_obj.paginator.count }} cosechero{{ page_obj.paginator.count|pluralize }} activo{{ page_obj.paginator.count|pluralize }}
             </p>
         </div>
 
+        <div id="cosecheros-results" class="transition-opacity" aria-live="polite">
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-800">
                 <thead class="bg-slate-950/60">
@@ -111,7 +116,7 @@
                                 </div>
                                 <div>
                                     <p class="font-medium text-white">{{ cosechero.nombre }} {{ cosechero.apellido }}</p>
-                                    <p class="text-xs text-slate-500">{{ cosechero.terreno_sembrado }} tareas</p>
+                                    <p class="text-xs text-slate-500">{{ cosechero.terreno_sembrado|number_2 }} tareas</p>
                                 </div>
                             </div>
                         </td>
@@ -171,6 +176,7 @@
             </div>
         </nav>
         {% endif %}
+        </div>
     </section>
 
     <div
@@ -246,4 +252,5 @@
         </div>
     </div>
 </div>
+<script src="{% static 'js/live-search.js' %}"></script>
 {% endblock %}

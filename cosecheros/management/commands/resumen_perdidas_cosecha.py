@@ -1,6 +1,7 @@
 # app/management/commands/resumen_perdidas_cosecha.py
 from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
+from app.number_format import format_number
 from cosecheros.services import calcular_saldos_cosecha
 import csv
 
@@ -50,12 +51,12 @@ class Command(BaseCommand):
                 )
 
         imprimir_grupo(f"Cosecha #{cosecha_id} — Nos deben (saldo > 0)", nos_deben)
-        self.stdout.write(self.style.NOTICE(f"Subtotal nos deben: {total_nos_deben:,.2f}\n"))
+        self.stdout.write(self.style.NOTICE(f"Subtotal nos deben: {format_number(total_nos_deben)}\n"))
 
         imprimir_grupo(f"Cosecha #{cosecha_id} — Les debemos (saldo < 0)", les_debemos)
-        self.stdout.write(self.style.NOTICE(f"Subtotal les debemos: {total_les_debemos:,.2f}\n"))
+        self.stdout.write(self.style.NOTICE(f"Subtotal les debemos: {format_number(total_les_debemos)}\n"))
 
-        self.stdout.write(self.style.WARNING(f"NETO (nos deben - les debemos): {neto:,.2f}\n"))
+        self.stdout.write(self.style.WARNING(f"NETO (nos deben - les debemos): {format_number(neto)}\n"))
 
         if csv_path:
             with open(csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -75,20 +76,20 @@ class Command(BaseCommand):
                         cosecha_id,
                         c.id,
                         f"{c.nombre} {c.apellido}".strip(),
-                        f"{r['gastos_articulos']:.2f}",
-                        f"{r['gastos_avances']:.2f}",
-                        f"{r['gastos']:.2f}",
-                        f"{r['produccion']:.2f}",
-                        f"{r['saldo']:.2f}",
+                        format_number(r['gastos_articulos']),
+                        format_number(r['gastos_avances']),
+                        format_number(r['gastos']),
+                        format_number(r['produccion']),
+                        format_number(r['saldo']),
                         grupo,
                         r['cantidad_entregas'],
                         'si' if r['sin_produccion_entregada'] else 'no',
                         r['entregas_sin_precio'],
-                        f"{r['tareas_sembradas']:.2f}",
-                        f"{r['gasto_promedio_tarea']:.2f}" if r['gasto_promedio_tarea'] is not None else '',
-                        f"{r['produccion_promedio_tarea']:.2f}" if r['produccion_promedio_tarea'] is not None else '',
-                        f"{r['quintales_producidos']:.2f}",
-                        f"{r['quintales_promedio_tarea']:.2f}" if r['quintales_promedio_tarea'] is not None else '',
+                        format_number(r['tareas_sembradas']),
+                        format_number(r['gasto_promedio_tarea']) if r['gasto_promedio_tarea'] is not None else '',
+                        format_number(r['produccion_promedio_tarea']) if r['produccion_promedio_tarea'] is not None else '',
+                        format_number(r['quintales_producidos']),
+                        format_number(r['quintales_promedio_tarea']) if r['quintales_promedio_tarea'] is not None else '',
                         r['ultima_actividad_fecha'].isoformat() if r['ultima_actividad_fecha'] else '',
                         '|'.join(r['ultima_actividad_tipos']),
                         r['ultima_actividad_precision'] or '',
