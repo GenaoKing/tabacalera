@@ -5,15 +5,35 @@
 
 {% block content %}
 {{ detalles_iniciales|json_script:"detalles-compra-iniciales" }}
+{{ cabecera_inicial|json_script:"cabecera-compra-inicial" }}
 
 <div class="tw mx-auto max-w-7xl" x-data="compraPage()">
     <div class="mb-6">
         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-tobacco-400">Entrada de inventario</p>
         <h2 class="mt-1 text-2xl font-semibold tracking-tight text-white">Registrar compra</h2>
-        <p class="mt-1 text-sm text-slate-400">Seleccione el proveedor, complete los datos de la factura y confirme los artículos recibidos.</p>
+        <p class="mt-1 text-sm text-slate-400">Agregue solamente los artículos recibidos en esta factura.</p>
     </div>
 
-    <form method="post" id="formCompra" @submit="prepararEnvio($event)" class="space-y-5">
+    <div
+        x-show="avisoBorrador"
+        x-cloak
+        class="mb-5 flex flex-col gap-3 rounded-xl border border-blue-700/50 bg-blue-950/30 px-4 py-3 sm:flex-row sm:items-center"
+    >
+        <div class="flex-1">
+            <p class="text-sm font-medium text-blue-200" x-text="avisoBorrador"></p>
+            <p x-show="advertenciaBorrador" class="mt-0.5 text-xs text-blue-300/70" x-text="advertenciaBorrador"></p>
+        </div>
+        <button type="button" @click="descartarBorrador()" class="text-sm font-semibold text-blue-300 hover:text-white">Descartar borrador</button>
+    </div>
+
+    <form
+        method="post"
+        id="formCompra"
+        x-ref="formCompra"
+        @submit="prepararEnvio($event)"
+        @input.debounce.300ms="guardarBorrador()"
+        class="space-y-5"
+    >
         {% csrf_token %}
         <input type="hidden" name="proveedor_id" x-ref="proveedorInput">
         <input type="hidden" name="detallesCompra" x-ref="detallesInput">
@@ -31,7 +51,7 @@
                 </div>
                 <div>
                     <h3 class="font-semibold text-white">Datos de la compra</h3>
-                    <p class="text-xs text-slate-500">Información del proveedor y comprobante</p>
+                    <p class="text-xs text-slate-500">Proveedor y comprobante de una sola factura</p>
                 </div>
             </div>
 
@@ -41,7 +61,7 @@
                     <select
                         id="proveedorSelect"
                         x-model="proveedorId"
-                        @change="cargarArticulos([])"
+                        @change="cambiarProveedor($event)"
                         class="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500"
                         required
                     >
@@ -56,73 +76,174 @@
                 <div>
                     <label for="{{ field.id_for_label }}" class="mb-1.5 block text-sm font-medium text-slate-300">{{ field.label }}</label>
                     {{ field }}
+                    {% if field.name == 'fecha_compra' or field.name == 'fecha_vencimiento' %}
+                    <p class="mt-1 text-xs text-slate-500">Formato: dd-mm-aaaa</p>
+                    {% endif %}
                     {% for error in field.errors %}<p class="mt-1 text-xs text-red-300">{{ error }}</p>{% endfor %}
                 </div>
                 {% endfor %}
             </div>
         </section>
 
-        <section class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 shadow-xl shadow-black/10">
-            <div class="flex flex-col gap-3 border-b border-slate-800 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <h3 class="font-semibold text-white">Artículos recibidos</h3>
-                    <p class="mt-0.5 text-xs text-slate-500">Las cantidades registradas crearán los lotes de inventario FIFO.</p>
+        <section class="overflow-visible rounded-xl border border-slate-800 bg-slate-900/60 shadow-xl shadow-black/10">
+            <div class="border-b border-slate-800 px-5 py-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h3 class="font-semibold text-white">Agregar artículos recibidos</h3>
+                        <p class="mt-0.5 text-xs text-slate-500">Busque dentro del catálogo del proveedor y agregue solo lo facturado.</p>
+                    </div>
+                    <button
+                        type="button"
+                        @click="abrirAltaArticulo()"
+                        :disabled="!proveedorId || cargando"
+                        class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-300 hover:border-tobacco-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        <span class="text-lg leading-none">+</span> Nuevo artículo
+                    </button>
                 </div>
-                <div x-show="articulos.length" x-cloak class="flex items-center gap-2 text-xs text-slate-400">
-                    <span class="rounded-full bg-slate-800 px-2.5 py-1" x-text="`${articulos.length} artículo${articulos.length === 1 ? '' : 's'}`"></span>
-                    <span class="rounded-full bg-tobacco-600/15 px-2.5 py-1 font-medium text-tobacco-300" x-text="`Costo: ${moneda(totalCompra)}`"></span>
+
+                <div class="relative mt-4">
+                    <label for="busquedaArticulo" class="sr-only">Buscar artículo</label>
+                    <div class="relative">
+                        <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m2.1-5.4a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
+                        <input
+                            id="busquedaArticulo"
+                            x-ref="busquedaArticulo"
+                            type="search"
+                            x-model="busquedaArticulo"
+                            @keydown.enter.prevent="agregarPrimeraCoincidencia()"
+                            :disabled="!proveedorId || cargando"
+                            placeholder="Escriba nombre, presentación o categoría…"
+                            autocomplete="off"
+                            class="block w-full rounded-lg border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-sm text-white placeholder-slate-500 focus:border-tobacco-500 focus:ring-tobacco-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                    </div>
+
+                    <div
+                        x-show="busquedaArticulo.trim().length >= 2"
+                        x-cloak
+                        class="absolute z-30 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-black/40"
+                    >
+                        <template x-for="articulo in articulosFiltrados" :key="articulo.id">
+                            <button
+                                type="button"
+                                @click="agregarArticulo(articulo)"
+                                class="grid w-full grid-cols-[1fr_auto] items-center gap-4 border-b border-slate-800 px-4 py-3 text-left last:border-0 hover:bg-slate-900 sm:grid-cols-[1fr_100px_120px_auto]"
+                            >
+                                <span>
+                                    <span class="block text-sm font-medium text-white" x-text="articulo.descripcion"></span>
+                                    <span class="mt-0.5 block text-xs text-slate-500" x-text="`${articulo.presentacion || 'Sin presentación'} · ${categoriaEtiqueta(articulo.categoria)}`"></span>
+                                </span>
+                                <span class="hidden text-right sm:block">
+                                    <span class="block text-[10px] uppercase tracking-wide text-slate-600">Inventario</span>
+                                    <span class="font-mono text-sm text-slate-300" x-text="numero(articulo.inventario)"></span>
+                                </span>
+                                <span class="hidden text-right sm:block">
+                                    <span class="block text-[10px] uppercase tracking-wide text-slate-600">Última venta</span>
+                                    <span class="font-mono text-sm text-emerald-300" x-text="articulo.ultimoPrecioVenta === null ? 'Sin historial' : moneda(articulo.ultimoPrecioVenta)"></span>
+                                </span>
+                                <span class="rounded-lg bg-tobacco-600/20 px-3 py-1.5 text-xs font-semibold text-tobacco-300">Agregar</span>
+                            </button>
+                        </template>
+                        <p x-show="articulosFiltrados.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">No hay coincidencias disponibles.</p>
+                    </div>
                 </div>
-            </div>
 
-            <div x-show="cargando" x-cloak class="flex items-center justify-center gap-3 px-5 py-16 text-sm text-slate-400">
-                <svg class="h-5 w-5 animate-spin text-tobacco-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"></path></svg>
-                Cargando artículos del proveedor…
-            </div>
-
-            <div x-show="!cargando && errorCarga" x-cloak class="px-5 py-10 text-center">
-                <p class="text-sm text-red-300" x-text="errorCarga"></p>
-                <button type="button" @click="cargarArticulos([])" class="mt-3 text-xs font-semibold text-tobacco-400 hover:text-tobacco-300">Intentar nuevamente</button>
-            </div>
-
-            <div x-show="!cargando && !errorCarga && !proveedorId" x-cloak class="px-5 py-16 text-center">
-                <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-slate-500">
-                    <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5 19.625 18.132a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6.25 3.75h4m-10.625-3.75h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"/></svg>
+                <div x-show="cargando" x-cloak class="mt-4 flex items-center gap-2 text-sm text-slate-400">
+                    <svg class="h-4 w-4 animate-spin text-tobacco-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"></path></svg>
+                    Cargando catálogo…
                 </div>
-                <p class="mt-3 text-sm font-medium text-slate-300">Seleccione un proveedor</p>
-                <p class="mt-1 text-xs text-slate-500">Aquí aparecerán sus artículos disponibles.</p>
+                <p x-show="errorCarga" x-cloak class="mt-3 text-sm text-red-300" x-text="errorCarga"></p>
+                <p x-show="proveedorId && !cargando && !errorCarga && catalogo.length === 0" x-cloak class="mt-3 text-sm text-amber-300">Este proveedor no tiene artículos activos. Puede crear uno sin salir de la compra.</p>
             </div>
 
-            <div x-show="!cargando && !errorCarga && proveedorId && !articulos.length" x-cloak class="px-5 py-16 text-center">
-                <p class="text-sm font-medium text-slate-300">El proveedor no tiene artículos activos</p>
+            <div x-show="carrito.length === 0" x-cloak class="px-5 py-12 text-center">
+                <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-800 text-slate-500">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2m0 0L7 13h10l2-8H5.4ZM9 19.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0Zm8 0a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0Z"/></svg>
+                </div>
+                <p class="mt-3 text-sm font-medium text-slate-300">La compra todavía no tiene artículos</p>
+                <p class="mt-1 text-xs text-slate-500">Cada artículo agregado creará un lote FIFO al guardar.</p>
             </div>
 
-            <div x-show="!cargando && !errorCarga && articulos.length" x-cloak class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-800">
+            <div x-show="carrito.length" x-cloak class="overflow-x-auto">
+                <table class="min-w-[1040px] w-full divide-y divide-slate-800">
                     <thead class="bg-slate-950/60">
                         <tr>
                             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Artículo</th>
-                            <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Inventario</th>
-                            <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Mínimo</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Cantidad</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Precio compra</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Precio venta</th>
-                            <th class="w-12 px-4 py-3"><span class="sr-only">Eliminar</span></th>
+                            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Cantidad</th>
+                            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Costo actual</th>
+                            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Precio venta</th>
+                            <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Subtotal</th>
+                            <th class="w-14 px-3 py-3"><span class="sr-only">Quitar</span></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/70">
-                        <template x-for="(articulo, index) in articulos" :key="articulo.id">
-                            <tr class="hover:bg-slate-800/30">
-                                <td class="min-w-[220px] px-4 py-3">
-                                    <p class="text-sm font-medium text-white" x-text="articulo.descripcion"></p>
-                                    <p class="mt-0.5 text-xs text-slate-500" x-text="articulo.presentacion || 'Sin presentación'"></p>
+                        <template x-for="(item, index) in carrito" :key="`${item.id}-${index}`">
+                            <tr :class="item.errores.length || !item.disponible ? 'bg-red-950/15' : 'hover:bg-slate-800/20'">
+                                <td class="min-w-[260px] px-4 py-3 align-top">
+                                    <p class="text-sm font-medium text-white" x-text="item.descripcion"></p>
+                                    <p class="mt-0.5 text-xs text-slate-500">
+                                        <span x-text="item.presentacion || 'Sin presentación'"></span>
+                                        <span aria-hidden="true"> · </span>
+                                        Inventario <span class="font-mono" x-text="numero(item.inventario)"></span>
+                                        <span aria-hidden="true"> · </span>
+                                        Mínimo <span class="font-mono" x-text="numero(item.minimo)"></span>
+                                    </p>
+                                    <template x-for="error in item.errores" :key="error">
+                                        <p class="mt-1 text-xs text-red-300" x-text="error"></p>
+                                    </template>
+                                    <p x-show="!item.disponible" class="mt-1 text-xs text-red-300">Quite esta línea para poder guardar.</p>
                                 </td>
-                                <td class="px-4 py-3 text-right font-mono text-sm text-slate-300" x-text="numero(articulo.inventario)"></td>
-                                <td class="px-4 py-3 text-right font-mono text-sm" :class="Number(articulo.inventario) <= Number(articulo.minimo) ? 'text-amber-300' : 'text-slate-400'" x-text="numero(articulo.minimo)"></td>
-                                <td class="px-4 py-3"><input type="number" min="1" step="0.01" x-model="articulo.cantidad" class="w-24 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-right font-mono text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500" required></td>
-                                <td class="px-4 py-3"><input type="number" min="0" step="0.01" x-model="articulo.precioCompra" class="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-right font-mono text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500" placeholder="0.00" required></td>
-                                <td class="px-4 py-3"><input type="number" min="0" step="0.01" x-model="articulo.precioVenta" class="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-right font-mono text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500" placeholder="0.00" required></td>
-                                <td class="px-4 py-3 text-right">
-                                    <button type="button" @click="articulos.splice(index, 1)" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-300" title="Quitar artículo">
+                                <td class="px-3 py-3 align-top">
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        max="99999999.99"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                        x-model="item.cantidad"
+                                        @input="limpiarErrores(item)"
+                                        :data-cantidad-id="item.id"
+                                        :disabled="!item.disponible"
+                                        required
+                                        placeholder="0.00"
+                                        class="w-28 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-right font-mono text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500 disabled:opacity-40"
+                                    >
+                                </td>
+                                <td class="px-3 py-3 align-top">
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        max="99999999.99"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                        x-model="item.precioCompra"
+                                        @input="limpiarErrores(item)"
+                                        :disabled="!item.disponible"
+                                        required
+                                        placeholder="0.00"
+                                        class="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-right font-mono text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500 disabled:opacity-40"
+                                    >
+                                    <p class="mt-1 text-[11px] text-slate-500" x-text="item.ultimoPrecioCompra === null ? 'Sin costo anterior' : `Anterior: ${moneda(item.ultimoPrecioCompra)}`"></p>
+                                </td>
+                                <td class="px-3 py-3 align-top">
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        max="99999999.99"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                        x-model="item.precioVenta"
+                                        @input="limpiarErrores(item)"
+                                        :disabled="!item.disponible"
+                                        required
+                                        placeholder="0.00"
+                                        class="w-32 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-right font-mono text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500 disabled:opacity-40"
+                                    >
+                                </td>
+                                <td class="px-3 py-3 text-right align-top font-mono text-sm font-semibold text-white" x-text="moneda(subtotal(item))"></td>
+                                <td class="px-3 py-3 text-right align-top">
+                                    <button type="button" @click="quitarArticulo(index)" class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-500/10 hover:text-red-300" title="Quitar artículo">
                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673A2.25 2.25 0 0 1 15.916 21H8.084a2.25 2.25 0 0 1-2.244-1.327L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
                                     </button>
                                 </td>
@@ -135,20 +256,67 @@
 
         <div x-show="errorFormulario" x-cloak class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200" x-text="errorFormulario"></div>
 
-        <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
-            <p x-show="articulos.length" x-cloak class="mr-auto text-sm text-slate-400">
-                Valor de venta sugerido: <span class="font-semibold text-white" x-text="moneda(totalVenta)"></span>
-            </p>
+        <div class="flex flex-col gap-4 rounded-xl border border-slate-800 bg-slate-900/70 px-5 py-4 sm:flex-row sm:items-center">
+            <div class="grid flex-1 grid-cols-3 gap-5">
+                <div>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">Artículos</p>
+                    <p class="mt-0.5 font-mono text-lg font-semibold text-white" x-text="carrito.length"></p>
+                </div>
+                <div>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">Costo total</p>
+                    <p class="mt-0.5 font-mono text-lg font-semibold text-tobacco-300" x-text="moneda(totalCompra)"></p>
+                </div>
+                <div>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">Venta sugerida</p>
+                    <p class="mt-0.5 font-mono text-lg font-semibold text-emerald-300" x-text="moneda(totalVenta)"></p>
+                </div>
+            </div>
             <button
                 type="submit"
-                :disabled="enviando || cargando"
-                class="inline-flex items-center justify-center gap-2 rounded-lg bg-tobacco-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-tobacco-500 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="enviando || cargando || !puedeGuardar"
+                class="inline-flex min-w-44 items-center justify-center gap-2 rounded-lg bg-tobacco-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-tobacco-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
                 <svg x-show="enviando" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"></path></svg>
                 <span x-text="enviando ? 'Guardando…' : 'Guardar compra'"></span>
             </button>
         </div>
     </form>
+
+    <div x-show="modalArticulo" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4" @keydown.escape.window="modalArticulo = false" @click.self="modalArticulo = false">
+        <div class="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+            <div class="border-b border-slate-800 px-5 py-4">
+                <h3 class="font-semibold text-white">Nuevo artículo para <span class="text-tobacco-300" x-text="proveedorNombre"></span></h3>
+                <p class="mt-1 text-xs text-slate-500">Se creará y se agregará a esta compra.</p>
+            </div>
+            <form @submit.prevent="crearArticulo($event)" class="space-y-4 p-5">
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-400">Descripción</label>
+                    <textarea name="descripcion" rows="2" required class="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500"></textarea>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-400">Categoría</label>
+                        <select name="categoria" required class="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500">
+                            {% for valor, etiqueta in categorias_articulo %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-xs font-medium text-slate-400">Presentación</label>
+                        <input name="presentacion" required class="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-medium text-slate-400">Cantidad mínima de orden</label>
+                    <input name="cantidad_minima_orden" type="number" min="0" step="1" required class="block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-tobacco-500 focus:ring-tobacco-500">
+                </div>
+                <p x-show="errorAlta" x-cloak class="text-sm text-red-300" x-text="errorAlta"></p>
+                <div class="flex justify-end gap-3 border-t border-slate-800 pt-4">
+                    <button type="button" @click="modalArticulo = false" class="px-3 py-2 text-sm text-slate-400 hover:text-white">Cancelar</button>
+                    <button type="submit" :disabled="creandoArticulo" class="rounded-lg bg-tobacco-600 px-4 py-2 text-sm font-semibold text-white hover:bg-tobacco-500 disabled:opacity-50" x-text="creandoArticulo ? 'Creando…' : 'Crear y agregar'"></button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -156,46 +324,139 @@
 <script>
 window.compraPage = function () {
     const detallesIniciales = JSON.parse(document.getElementById('detalles-compra-iniciales').textContent || '[]');
+    const cabeceraInicial = JSON.parse(document.getElementById('cabecera-compra-inicial').textContent || '{}');
+    const esPost = {% if es_post %}true{% else %}false{% endif %};
+    const compraGuardada = {% if compra_guardada %}true{% else %}false{% endif %};
 
     return {
+        usuarioId: '{{ usuario_id }}',
         proveedorId: '{{ proveedor_seleccionado|escapejs }}',
-        articulos: [],
+        proveedorConfirmado: '{{ proveedor_seleccionado|escapejs }}',
+        cabecera: {
+            fecha_compra: String(cabeceraInicial.fecha_compra || ''),
+            fecha_vencimiento: String(cabeceraInicial.fecha_vencimiento || ''),
+            factura: String(cabeceraInicial.factura || ''),
+            NFC: String(cabeceraInicial.NFC || ''),
+        },
+        catalogo: [],
+        carrito: [],
+        busquedaArticulo: '',
         cargando: false,
         enviando: false,
+        restaurando: false,
         errorCarga: '',
         errorFormulario: '',
+        avisoBorrador: '',
+        advertenciaBorrador: '',
+        modalArticulo: false,
+        creandoArticulo: false,
+        errorAlta: '',
+        categorias: {
+            {% for valor, etiqueta in categorias_articulo %}'{{ valor|escapejs }}': '{{ etiqueta|escapejs }}',{% endfor %}
+        },
 
-        init() {
-            if (this.proveedorId) this.cargarArticulos(detallesIniciales);
+        async init() {
+            if (compraGuardada) {
+                localStorage.removeItem(this.claveBorrador);
+                window.history.replaceState({}, '', window.location.pathname);
+                return;
+            }
+
+            if (esPost) {
+                this.restaurando = true;
+                if (this.proveedorId) await this.cargarArticulos(detallesIniciales);
+                this.restaurando = false;
+                this.guardarBorrador();
+                return;
+            }
+
+            await this.restaurarBorrador();
+        },
+
+        get claveBorrador() {
+            return `tabacalera:compra:borrador:usuario:${this.usuarioId}`;
+        },
+
+        get proveedorNombre() {
+            const opcion = Array.from(document.querySelectorAll('#proveedorSelect option'))
+                .find(item => String(item.value) === String(this.proveedorId));
+            return opcion ? opcion.textContent.trim() : 'el proveedor';
+        },
+
+        get articulosFiltrados() {
+            const palabras = this.normalizar(this.busquedaArticulo).split(/\s+/).filter(Boolean);
+            if (palabras.join('').length < 2) return [];
+            const seleccionados = new Set(this.carrito.map(item => Number(item.id)));
+            return this.catalogo.filter(articulo => {
+                if (seleccionados.has(Number(articulo.id))) return false;
+                const texto = this.normalizar(`${articulo.descripcion} ${articulo.presentacion} ${articulo.categoria} ${this.categoriaEtiqueta(articulo.categoria)}`);
+                return palabras.every(palabra => texto.includes(palabra));
+            }).slice(0, 8);
+        },
+
+        get totalCompra() {
+            return this.carrito.reduce((total, item) => total + this.subtotal(item), 0);
+        },
+
+        get totalVenta() {
+            return this.carrito.reduce((total, item) => {
+                return total + Number(item.cantidad || 0) * Number(item.precioVenta || 0);
+            }, 0);
+        },
+
+        get puedeGuardar() {
+            return Boolean(
+                this.proveedorId &&
+                this.fechaValida(this.cabecera.fecha_compra) &&
+                this.fechaValida(this.cabecera.fecha_vencimiento) &&
+                String(this.cabecera.factura || '').trim() &&
+                String(this.cabecera.NFC || '').trim() &&
+                this.carrito.length &&
+                this.carrito.every(item =>
+                    item.disponible &&
+                    this.decimalValido(item.cantidad) &&
+                    this.decimalValido(item.precioCompra) &&
+                    this.decimalValido(item.precioVenta)
+                )
+            );
+        },
+
+        async cambiarProveedor() {
+            const nuevoProveedor = String(this.proveedorId || '');
+            if (
+                this.carrito.length &&
+                String(this.proveedorConfirmado || '') !== nuevoProveedor &&
+                !window.confirm('Cambiar el proveedor quitará los artículos agregados. ¿Desea continuar?')
+            ) {
+                this.proveedorId = String(this.proveedorConfirmado || '');
+                return;
+            }
+
+            this.proveedorConfirmado = nuevoProveedor;
+            this.busquedaArticulo = '';
+            this.catalogo = [];
+            this.carrito = [];
+            this.errorFormulario = '';
+            if (nuevoProveedor) await this.cargarArticulos([]);
+            this.guardarBorrador();
+            this.$nextTick(() => this.$refs.busquedaArticulo?.focus());
         },
 
         async cargarArticulos(conservar = []) {
             this.errorCarga = '';
-            this.errorFormulario = '';
-            this.articulos = [];
+            this.catalogo = [];
+            this.carrito = [];
             if (!this.proveedorId) return;
 
             this.cargando = true;
             try {
                 const url = new URL('{% url "obtener_articulos" %}', window.location.origin);
                 url.searchParams.set('proveedor_id', this.proveedorId);
-                const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-                if (!response.ok) throw new Error('No se pudieron cargar los artículos.');
-                const data = await response.json();
-
-                this.articulos = data.articulos.map(item => {
-                    const anterior = conservar.find(detalle => String(detalle.articulo ?? detalle.id) === String(item.id));
-                    return {
-                        id: item.id,
-                        descripcion: item.descripcion,
-                        presentacion: item.presentacion,
-                        inventario: item.inventario_restante,
-                        minimo: item.cantidad_minima_orden,
-                        cantidad: anterior ? anterior.cantidad : 1,
-                        precioCompra: anterior ? anterior.precio_compra ?? anterior.precioCompra : '',
-                        precioVenta: anterior ? anterior.precio_venta_sugerido ?? anterior.precioVenta : '',
-                    };
-                });
+                const respuesta = await fetch(url, {headers: {'Accept': 'application/json'}});
+                if (!respuesta.ok) throw new Error('No se pudo cargar el catálogo del proveedor.');
+                const data = await respuesta.json();
+                this.catalogo = data.articulos.map(item => this.normalizarArticulo(item));
+                this.reconciliarLineas(conservar);
             } catch (error) {
                 this.errorCarga = error.message || 'Ocurrió un error al cargar los artículos.';
             } finally {
@@ -203,46 +464,256 @@ window.compraPage = function () {
             }
         },
 
-        prepararEnvio(event) {
-            this.errorFormulario = '';
-            if (!this.proveedorId) {
-                event.preventDefault();
-                this.errorFormulario = 'Seleccione un proveedor.';
+        normalizarArticulo(item) {
+            return {
+                id: Number(item.id),
+                descripcion: item.descripcion,
+                presentacion: item.presentacion || '',
+                categoria: item.categoria || '',
+                minimo: Number(item.cantidad_minima_orden || 0),
+                inventario: Number(item.inventario_restante ?? item.inventario ?? 0),
+                ultimoPrecioCompra: item.ultimo_precio_compra ?? item.ultimoPrecioCompra ?? null,
+                ultimoPrecioVenta: item.ultimo_precio_venta ?? item.ultimoPrecioVenta ?? null,
+            };
+        },
+
+        reconciliarLineas(detalles) {
+            let descartados = 0;
+            let preciosActualizados = 0;
+            this.carrito = (Array.isArray(detalles) ? detalles : []).map(detalle => {
+                const id = Number(detalle.articulo ?? detalle.id);
+                const actual = this.catalogo.find(item => Number(item.id) === id);
+                if (!actual) {
+                    descartados += 1;
+                    return {
+                        id,
+                        descripcion: detalle.descripcion || `Artículo #${id || 'inválido'}`,
+                        presentacion: detalle.presentacion || 'No disponible',
+                        categoria: detalle.categoria || '',
+                        minimo: Number(detalle.cantidad_minima_orden || detalle.minimo || 0),
+                        inventario: Number(detalle.inventario || 0),
+                        ultimoPrecioCompra: detalle.ultimoPrecioCompra ?? null,
+                        ultimoPrecioVenta: detalle.ultimoPrecioVenta ?? null,
+                        cantidad: detalle.cantidad ?? '',
+                        precioCompra: detalle.precio_compra ?? detalle.precioCompra ?? '',
+                        precioVenta: detalle.precio_venta_sugerido ?? detalle.precioVenta ?? '',
+                        disponible: false,
+                        errores: Array.isArray(detalle.errores) ? detalle.errores : [],
+                    };
+                }
+
+                if (
+                    detalle.ultimoPrecioVenta !== undefined &&
+                    String(detalle.ultimoPrecioVenta ?? '') !== String(actual.ultimoPrecioVenta ?? '')
+                ) preciosActualizados += 1;
+
+                return {
+                    ...actual,
+                    cantidad: detalle.cantidad ?? '',
+                    precioCompra: detalle.precio_compra ?? detalle.precioCompra ?? '',
+                    precioVenta: detalle.precio_venta_sugerido ?? detalle.precioVenta ?? actual.ultimoPrecioVenta ?? '',
+                    disponible: true,
+                    errores: Array.isArray(detalle.errores) ? detalle.errores : [],
+                };
+            });
+
+            const avisos = [];
+            if (descartados) avisos.push(`${descartados} artículo(s) ya no está(n) disponible(s); quite esas líneas.`);
+            if (preciosActualizados) avisos.push('Hay precios históricos más recientes; se conservaron los valores del borrador para su revisión.');
+            if (avisos.length) this.advertenciaBorrador = avisos.join(' ');
+        },
+
+        agregarPrimeraCoincidencia() {
+            if (this.articulosFiltrados.length) this.agregarArticulo(this.articulosFiltrados[0]);
+        },
+
+        agregarArticulo(articulo) {
+            const existente = this.carrito.find(item => Number(item.id) === Number(articulo.id));
+            if (existente) {
+                this.enfocarCantidad(existente.id);
                 return;
             }
-            if (!this.articulos.length) {
-                event.preventDefault();
-                this.errorFormulario = 'Agregue al menos un artículo a la compra.';
+            this.carrito.push({
+                ...articulo,
+                cantidad: '',
+                precioCompra: '',
+                precioVenta: articulo.ultimoPrecioVenta ?? '',
+                disponible: true,
+                errores: [],
+            });
+            this.busquedaArticulo = '';
+            this.guardarBorrador();
+            this.enfocarCantidad(articulo.id);
+        },
+
+        enfocarCantidad(articuloId) {
+            this.$nextTick(() => {
+                document.querySelector(`[data-cantidad-id="${articuloId}"]`)?.focus();
+            });
+        },
+
+        quitarArticulo(indice) {
+            this.carrito.splice(indice, 1);
+            this.errorFormulario = '';
+            this.guardarBorrador();
+            this.$nextTick(() => this.$refs.busquedaArticulo?.focus());
+        },
+
+        limpiarErrores(item) {
+            item.errores = [];
+            this.errorFormulario = '';
+        },
+
+        abrirAltaArticulo() {
+            if (!this.proveedorId) return;
+            this.errorAlta = '';
+            this.modalArticulo = true;
+        },
+
+        async crearArticulo(evento) {
+            if (this.creandoArticulo || !this.proveedorId) return;
+            this.creandoArticulo = true;
+            this.errorAlta = '';
+            const formulario = evento.currentTarget;
+            const datos = new FormData(formulario);
+            datos.set('proveedor', this.proveedorId);
+            datos.set('csrfmiddlewaretoken', this.$refs.formCompra.querySelector('[name="csrfmiddlewaretoken"]').value);
+            try {
+                const respuesta = await fetch('{% url "articulo_alta_rapida" %}', {
+                    method: 'POST',
+                    body: datos,
+                    headers: {'X-Requested-With': 'XMLHttpRequest'},
+                });
+                const data = await respuesta.json();
+                if (!respuesta.ok) {
+                    const errores = Object.values(data.errors || {}).flatMap(lista => lista.map(item => item.message));
+                    throw new Error(errores.join(' ') || 'Revise los campos del artículo.');
+                }
+                const articulo = this.normalizarArticulo(data.object);
+                this.catalogo.push(articulo);
+                this.catalogo.sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es'));
+                this.modalArticulo = false;
+                formulario.reset();
+                this.agregarArticulo(articulo);
+            } catch (error) {
+                this.errorAlta = error.message || 'No se pudo crear el artículo.';
+            } finally {
+                this.creandoArticulo = false;
+            }
+        },
+
+        guardarBorrador() {
+            if (this.restaurando) return;
+            const hayCabecera = Object.values(this.cabecera).some(valor => String(valor || '').trim());
+            if (!this.proveedorId && !this.carrito.length && !hayCabecera) {
+                localStorage.removeItem(this.claveBorrador);
+                return;
+            }
+            localStorage.setItem(this.claveBorrador, JSON.stringify({
+                actualizado: Date.now(),
+                proveedorId: this.proveedorId,
+                cabecera: {...this.cabecera},
+                carrito: this.carrito.map(item => ({
+                    id: item.id,
+                    descripcion: item.descripcion,
+                    presentacion: item.presentacion,
+                    categoria: item.categoria,
+                    minimo: item.minimo,
+                    inventario: item.inventario,
+                    ultimoPrecioCompra: item.ultimoPrecioCompra,
+                    ultimoPrecioVenta: item.ultimoPrecioVenta,
+                    cantidad: item.cantidad,
+                    precioCompra: item.precioCompra,
+                    precioVenta: item.precioVenta,
+                })),
+            }));
+        },
+
+        async restaurarBorrador() {
+            let borrador;
+            try {
+                borrador = JSON.parse(localStorage.getItem(this.claveBorrador));
+            } catch (_) {
+                localStorage.removeItem(this.claveBorrador);
+                return;
+            }
+            if (!borrador) return;
+            if (Date.now() - Number(borrador.actualizado || 0) > 86400000) {
+                localStorage.removeItem(this.claveBorrador);
                 return;
             }
 
-            const incompleto = this.articulos.some(articulo =>
-                Number(articulo.cantidad) <= 0 ||
-                articulo.precioCompra === '' || Number(articulo.precioCompra) < 0 ||
-                articulo.precioVenta === '' || Number(articulo.precioVenta) < 0
-            );
-            if (incompleto) {
-                event.preventDefault();
-                this.errorFormulario = 'Complete cantidad, precio de compra y precio de venta de todos los artículos.';
+            this.restaurando = true;
+            this.proveedorId = String(borrador.proveedorId || '');
+            this.proveedorConfirmado = this.proveedorId;
+            this.cabecera = {...this.cabecera, ...(borrador.cabecera || {})};
+            if (this.proveedorId) await this.cargarArticulos(borrador.carrito || []);
+            this.restaurando = false;
+            this.avisoBorrador = 'Borrador de compra restaurado';
+        },
+
+        descartarBorrador() {
+            localStorage.removeItem(this.claveBorrador);
+            this.restaurando = true;
+            this.proveedorId = '';
+            this.proveedorConfirmado = '';
+            this.cabecera = {fecha_compra: '', fecha_vencimiento: '', factura: '', NFC: ''};
+            this.catalogo = [];
+            this.carrito = [];
+            this.busquedaArticulo = '';
+            this.avisoBorrador = '';
+            this.advertenciaBorrador = '';
+            this.errorFormulario = '';
+            this.restaurando = false;
+        },
+
+        prepararEnvio(evento) {
+            this.errorFormulario = '';
+            if (!this.puedeGuardar) {
+                evento.preventDefault();
+                this.errorFormulario = 'Complete proveedor, fechas, comprobante y todos los valores positivos de los artículos.';
+                this.$refs.formCompra.reportValidity();
                 return;
             }
 
             this.$refs.proveedorInput.value = this.proveedorId;
-            this.$refs.detallesInput.value = JSON.stringify(this.articulos.map(articulo => ({
-                articulo: articulo.id,
-                cantidad: articulo.cantidad,
-                precio_compra: articulo.precioCompra,
-                precio_venta_sugerido: articulo.precioVenta,
+            this.$refs.detallesInput.value = JSON.stringify(this.carrito.map(item => ({
+                articulo: item.id,
+                cantidad: item.cantidad,
+                precio_compra: item.precioCompra,
+                precio_venta_sugerido: item.precioVenta,
             })));
+            this.guardarBorrador();
             this.enviando = true;
         },
 
-        get totalCompra() {
-            return this.articulos.reduce((total, articulo) => total + Number(articulo.cantidad || 0) * Number(articulo.precioCompra || 0), 0);
+        decimalValido(valor) {
+            const texto = String(valor ?? '').trim();
+            if (!/^\d+(?:\.\d{1,2})?$/.test(texto)) return false;
+            const numero = Number(texto);
+            return Number.isFinite(numero) && numero > 0 && numero <= 99999999.99;
         },
 
-        get totalVenta() {
-            return this.articulos.reduce((total, articulo) => total + Number(articulo.cantidad || 0) * Number(articulo.precioVenta || 0), 0);
+        fechaValida(valor) {
+            const coincidencia = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(valor || '').trim());
+            if (!coincidencia) return false;
+            const dia = Number(coincidencia[1]);
+            const mes = Number(coincidencia[2]);
+            const anio = Number(coincidencia[3]);
+            const fecha = new Date(Date.UTC(anio, mes - 1, dia));
+            return fecha.getUTCFullYear() === anio && fecha.getUTCMonth() === mes - 1 && fecha.getUTCDate() === dia;
+        },
+
+        subtotal(item) {
+            return Number(item.cantidad || 0) * Number(item.precioCompra || 0);
+        },
+
+        normalizar(valor) {
+            return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        },
+
+        categoriaEtiqueta(valor) {
+            return this.categorias[valor] || valor || 'Sin categoría';
         },
 
         numero(valor) {

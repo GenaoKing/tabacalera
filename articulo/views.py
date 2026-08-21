@@ -51,5 +51,12 @@ def alta_rapida(request):
     objeto = form.save()
     return JsonResponse({'success': True, 'object': {
         'id': objeto.id, 'descripcion': objeto.descripcion, 'presentacion': objeto.presentacion,
-        'categoria': objeto.categoria, 'inventario': 0, 'precio_venta': 0,
+        'categoria': objeto.categoria,
+        'cantidad_minima_orden': objeto.cantidad_minima_orden,
+        'proveedor_id': objeto.proveedor_id,
+        'inventario': 0,
+        'inventario_restante': 0,
+        'precio_venta': 0,
+        'ultimo_precio_compra': None,
+        'ultimo_precio_venta': None,
     }}, status=201)
